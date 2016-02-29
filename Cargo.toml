@@ -1,0 +1,12 @@
+[package]
+name = "vortex"
+version = "0.1.0"
+authors = ["Max Jensen <maxjen@gmail.com>"]
+
+[dependencies]
+glium = "*"
+cgmath = "*"
+inferno = { git = "https://github.com/Maxjen/inferno"}
+
+[[bin]]
+name = "vortex_test"
