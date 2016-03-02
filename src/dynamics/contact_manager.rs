@@ -13,7 +13,7 @@ impl ContactManager {
 }
 
 impl BroadPhaseCallback for ContactManager {
-    fn add_pair(&mut self, data_id_a: u32, data_id_b: u32) {
-        println!("a: {}, b: {}", data_id_a, data_id_b);
+    fn add_pair(&mut self, data_id_a: Option<u32>, data_id_b: Option<u32>) {
+        println!("a: {:?}, b: {:?}", data_id_a, data_id_b);
     }
 }

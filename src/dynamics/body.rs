@@ -3,11 +3,11 @@ use std::cell::RefCell;
 use cgmath::*;
 use ::collision::PolygonShape;
 use ::common::Transform2d;
-use super::Fixture;
+use super::{WorldHandle, FixtureHandle};
 
-pub type BodyHandle = Rc<RefCell<Body>>;
+pub type BodyHandle<'a> = Rc<RefCell<Body<'a>>>;
 
-pub struct Body {
+pub struct Body<'a> {
     id: u32,
 
     transform: Transform2d,
@@ -20,11 +20,13 @@ pub struct Body {
 
     mass: f32,
 
-    fixtures: Vec<Fixture>,
+    fixtures: Vec<FixtureHandle>,
+
+    world: Option<WorldHandle<'a>>,
 }
 
-impl Body {
-    pub fn new(id: u32) -> Body {
+impl<'a> Body<'a> {
+    pub fn new(id: u32) -> Body<'a> {
         Body {
             id: id,
 
@@ -35,14 +37,30 @@ impl Body {
             torque: 0.0,
             mass: 0.0,
             fixtures: Vec::new(),
+            world: None,
         }
     }
 
-    pub fn create_fixture(&mut self, shape: PolygonShape) {
-        self.fixtures.push(Fixture::new(shape));
+    pub fn set_world_handle(&mut self, world: Option<WorldHandle<'a>>) {
+        self.world = world;
     }
 
-    pub fn get_fixtures(&self) -> &Vec<Fixture> {
+    pub fn create_fixture(&mut self, shape: PolygonShape) {
+        let fixture = self.world.as_ref().unwrap().borrow_mut().create_fixture(self.id, shape);
+        let broad_phase = &mut self.world.as_ref().unwrap().borrow_mut().broad_phase;
+        fixture.borrow_mut().create_proxy(broad_phase, &self.transform);
+        self.fixtures.push(fixture);
+    }
+
+    pub fn delete_fixtures(&mut self) {
+        for fixture in &self.fixtures {
+            let broad_phase = &mut self.world.as_ref().unwrap().borrow_mut().broad_phase;
+            fixture.borrow_mut().destroy_proxy(broad_phase);
+            self.world.as_ref().unwrap().borrow_mut().delete_fixture(fixture.borrow().id);
+        }
+    }
+
+    pub fn get_fixtures(&self) -> &Vec<FixtureHandle> {
         &self.fixtures
     }
 

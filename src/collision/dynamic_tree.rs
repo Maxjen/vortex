@@ -1,13 +1,14 @@
 use ::common;
 use ::common::IndexPool;
 use super::Aabb;
+use ::common::DebugDraw;
 use cgmath::*;
 use std::cmp;
 
 const NULL_NODE: u32 = !0 as u32;
 
 pub trait TreeCallback {
-    fn query_callback(&mut self);
+    fn query_callback(&mut self, proxy_id: u32) -> bool;
 }
 
 pub struct TreeNode {
@@ -51,7 +52,7 @@ impl DynamicTree {
             node_count: 0,
             node_capacity: 16
         };
-        for i in 0..16 {
+        for _ in 0..16 {
             result.nodes.push(TreeNode::new());
         }
         result
@@ -59,7 +60,7 @@ impl DynamicTree {
 
     fn allocate_node(&mut self) -> u32 {
         if self.node_count == self.node_capacity {
-            for i in 0..self.node_capacity {
+            for _ in 0..self.node_capacity {
                 self.nodes.push(TreeNode::new());
             }
             self.node_capacity *= 2;
@@ -88,7 +89,7 @@ impl DynamicTree {
     }
 
     pub fn destroy_proxy(&mut self, proxy_id: u32) {
-        assert!(0 <= proxy_id && (proxy_id as usize) < self.node_capacity);
+        assert!((proxy_id as usize) < self.node_capacity);
         assert!(self.nodes[proxy_id as usize].is_leaf());
 
         self.remove_leaf(proxy_id);
@@ -96,7 +97,7 @@ impl DynamicTree {
     }
 
     pub fn move_proxy(&mut self, proxy_id: u32, aabb: &Aabb, displacement: Vector2<f32>) -> bool     {
-        assert!(0 <= proxy_id && (proxy_id as usize) < self.node_capacity);
+        assert!((proxy_id as usize) < self.node_capacity);
         assert!(self.nodes[proxy_id as usize].is_leaf());
 
         if self.nodes[proxy_id as usize].aabb.contains(aabb) {
@@ -129,16 +130,16 @@ impl DynamicTree {
     }
 
     pub fn get_fat_aabb(&self, proxy_id: u32) -> Aabb {
-        assert!(0 <= proxy_id && (proxy_id as usize) < self.node_capacity);
+        assert!((proxy_id as usize) < self.node_capacity);
         self.nodes[proxy_id as usize].aabb.clone()
     }
 
     pub fn get_data_id(&self, proxy_id: u32) -> Option<u32> {
-        assert!(0 <= proxy_id && (proxy_id as usize) < self.node_capacity);
+        assert!((proxy_id as usize) < self.node_capacity);
         self.nodes[proxy_id as usize].data_id
     }
 
-    /*pub fn query(&self, callback: &mut TreeCallback, aabb: &Aabb) {
+    pub fn query(&self, callback: &mut TreeCallback, aabb: &Aabb) {
         let mut nodes = Vec::with_capacity(256);
         nodes.push(self.root as usize);
 
@@ -150,16 +151,17 @@ impl DynamicTree {
 
             if self.nodes[node_id].aabb.overlaps(aabb) {
                 if self.nodes[node_id].is_leaf() {
-                    callback.query_callback();
+                    let proceed = callback.query_callback(node_id as u32);
+                    if !proceed {
+                        return;
+                    }
                 } else {
                     nodes.push(self.nodes[node_id].children.0 as usize);
                     nodes.push(self.nodes[node_id].children.1 as usize);
                 }
             }
         }
-
-        unimplemented!();
-    }*/
+    }
 
     fn insert_leaf(&mut self, node_id: u32) {
         let leaf = node_id as usize;
@@ -421,7 +423,7 @@ impl DynamicTree {
     }
 
     fn compute_node_height(&self, node_id: u32) -> i32 {
-        assert!(0 <= node_id && (node_id as usize) < self.node_capacity);
+        assert!((node_id as usize) < self.node_capacity);
 
         if self.nodes[node_id as usize].is_leaf() {
             return 0
@@ -455,8 +457,8 @@ impl DynamicTree {
             return;
         }
 
-        assert!(0 <= child1 && child1 < self.node_capacity);
-        assert!(0 <= child2 && child2 < self.node_capacity);
+        assert!(child1 < self.node_capacity);
+        assert!(child2 < self.node_capacity);
 
         assert!(self.nodes[child1].parent == node_id);
         assert!(self.nodes[child2].parent == node_id);
@@ -480,8 +482,8 @@ impl DynamicTree {
             return;
         }
 
-        assert!(0 <= child1 && child1 < self.node_capacity);
-        assert!(0 <= child2 && child2 < self.node_capacity);
+        assert!(child1 < self.node_capacity);
+        assert!(child2 < self.node_capacity);
 
         let height1 = self.nodes[child1].height;
         let height2 = self.nodes[child2].height;
@@ -518,7 +520,7 @@ impl DynamicTree {
 
             let child1 = node.children.0 as usize;
             let child2 = node.children.1 as usize;
-            let mut balance = i32::abs(self.nodes[child2].height - self.nodes[child1].height);
+            let balance = i32::abs(self.nodes[child2].height - self.nodes[child1].height);
             max_balance = cmp::max(max_balance, balance);
         }
         max_balance
@@ -591,6 +593,16 @@ impl DynamicTree {
         for node in &mut self.nodes {
             node.aabb.min = node.aabb.min - new_origin;
             node.aabb.max = node.aabb.max - new_origin;
+        }
+    }
+
+    pub fn print(&self) {
+        for node in &self.nodes {
+            if node.height < 0 {
+                continue;
+            }
+
+            println!("min {:?} max {:?}", node.aabb.min, node.aabb.max);
         }
     }
 }

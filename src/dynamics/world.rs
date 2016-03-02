@@ -1,46 +1,75 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use cgmath::*;
-use super::{Body, BodyHandle, ContactManager};
-use ::collision::BroadPhase;
+use super::{Body, BodyHandle, Fixture, FixtureHandle, ContactManager};
+use ::collision::{BroadPhase, PolygonShape};
 use ::common::{IndexPool, DebugDraw};
 use ::common::debug_draw;
 
 pub type WorldHandle<'a> = Rc<RefCell<World<'a>>>;
 
 pub struct World<'a> {
-    broad_phase: BroadPhase,
+    pub broad_phase: BroadPhase,
     contact_manager: ContactManager,
 
-    index_pool: IndexPool,
     gravity: Vector2<f32>,
-    bodies: HashMap<u32, BodyHandle>,
+
+    bodies: HashMap<u32, BodyHandle<'a>>,
+    body_index_pool: IndexPool,
+    fixtures: HashMap<u32, FixtureHandle>,
+    fixture_index_pool: IndexPool,
+
     debug_draw: Option<Rc<RefCell<DebugDraw + 'a>>>,
+    self_handle: Option<Weak<RefCell<World<'a>>>>,
 }
 
 impl<'a> World<'a> {
     pub fn new(gravity: Vector2<f32>) -> WorldHandle<'a> {
-        Rc::new(RefCell::new(World {
+        let result = Rc::new(RefCell::new(World {
             broad_phase: BroadPhase::new(),
             contact_manager: ContactManager::new(),
-            index_pool: IndexPool::new(),
             gravity: gravity,
             bodies: HashMap::new(),
+            body_index_pool: IndexPool::new(),
+            fixtures: HashMap::new(),
+            fixture_index_pool: IndexPool::new(),
             debug_draw: None,
-        }))
+            self_handle: None,
+        }));
+        let self_handle = Some(Rc::downgrade(&result));
+        result.borrow_mut().self_handle = self_handle;
+        result
     }
 
-    pub fn create_body(&mut self) -> BodyHandle {
-        let index = self.index_pool.get_index();
+    pub fn create_body(&mut self) -> BodyHandle<'a> {
+        let index = self.body_index_pool.get_index();
         let result = Rc::new(RefCell::new(Body::new(index)));
+        result.borrow_mut().set_world_handle(self.self_handle.as_ref().unwrap().upgrade());
         self.bodies.insert(index, result.clone());
         result
     }
 
     pub fn delete_body(&mut self, id: u32) {
-        self.bodies.remove(&id);
-        self.index_pool.recycle_index(id);
+        if let Some(to_remove) = self.bodies.get(&id) {
+            to_remove.borrow_mut().delete_fixtures();
+        }
+        if let Some(_) = self.bodies.remove(&id) {
+            self.body_index_pool.recycle_index(id);
+        }
+    }
+
+    pub fn create_fixture(&mut self, body_index: u32, shape: PolygonShape) -> FixtureHandle {
+        let index = self.fixture_index_pool.get_index();
+        let result = Rc::new(RefCell::new(Fixture::new(index, body_index, shape)));
+        self.fixtures.insert(index, result.clone());
+        result
+    }
+
+    pub fn delete_fixture(&mut self, id: u32) {
+        if let Some(_) = self.fixtures.remove(&id) {
+            self.fixture_index_pool.recycle_index(id);
+        }
     }
 
     pub fn set_debug_draw(&mut self, debug_draw: Option<Rc<RefCell<DebugDraw + 'a>>>) {
@@ -54,7 +83,9 @@ impl<'a> World<'a> {
                 //let () = b;
                 //let shape = b.borrow().get_shape();
                 for f in b.borrow().get_fixtures() {
-                    let shape = f.get_shape();
+                    let f = f.borrow();
+                    //let shape = f.get_shape();
+                    let shape = &f.shape;
                     let mut vertices = Vec::new();
                     for v in &shape.vertices {
                         vertices.push(transform.apply_to_vector(v));

@@ -71,7 +71,6 @@ impl PolygonShape {
         }
 
         let mut hull = Vec::<usize>::new();
-        let m = 0;
         let mut ih = i0;
 
         loop {
@@ -82,7 +81,7 @@ impl PolygonShape {
                 ie = 1;
             }
 
-            for (i, v) in vertices_tmp.iter().enumerate().skip(1) {
+            for (i, _) in vertices_tmp.iter().enumerate().skip(1) {
                 let r = vertices_tmp[ie] - vertices_tmp[*hull.last().unwrap()];
                 let v = vertices_tmp[i] - vertices_tmp[*hull.last().unwrap()];
                 let c = r.perp_dot(v);
@@ -121,8 +120,6 @@ impl PolygonShape {
         }
 
         self.compute_centroid();
-
-        println!("{:?}, {:?}", self.vertices, self.centroid);
     }
 
     pub fn set_as_box(&mut self, half_width: f32, half_height: f32) {
@@ -139,7 +136,7 @@ impl PolygonShape {
         self.normals.push(Vector2::new(-1.0, 0.0));
     }
 
-    pub fn compute_aabb(&self, transform: Transform2d) -> Aabb {
+    pub fn compute_aabb(&self, transform: &Transform2d) -> Aabb {
         let mut min = transform.apply_to_vector(&self.vertices[0]);
         let mut max = min;
         for v in &self.vertices {

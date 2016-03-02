@@ -74,8 +74,6 @@ fn main() {
                         .with_depth_buffer(24)
                         .build_glium().unwrap();
 
-    println!("Hello, world!");
-
     let gravity = Vector2::new(0.0, -10.0);
     let world = World::new(gravity);
     let debug_draw = Rc::new(RefCell::new(MyDebugDraw::new(&display)));
@@ -98,6 +96,8 @@ fn main() {
     body2.borrow_mut().set_transform(&Vector2::<f32>::new(500.0, -300.0), 0.8);
 
     world.borrow_mut().test();
+
+    world.borrow().broad_phase.print();
 
     loop {
         use glium::glutin::Event;
