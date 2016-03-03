@@ -8,6 +8,7 @@ use ::common::{IndexPool, DebugDraw};
 use ::common::debug_draw;
 
 pub type WorldHandle<'a> = Rc<RefCell<World<'a>>>;
+pub type WorldHandleWeak<'a> = Weak<RefCell<World<'a>>>;
 
 pub struct World<'a> {
     pub broad_phase: BroadPhase,
@@ -21,7 +22,7 @@ pub struct World<'a> {
     fixture_index_pool: IndexPool,
 
     debug_draw: Option<Rc<RefCell<DebugDraw + 'a>>>,
-    self_handle: Option<Weak<RefCell<World<'a>>>>,
+    self_handle: Option<WorldHandleWeak<'a>>,
 }
 
 impl<'a> World<'a> {
@@ -44,8 +45,8 @@ impl<'a> World<'a> {
 
     pub fn create_body(&mut self) -> BodyHandle<'a> {
         let index = self.body_index_pool.get_index();
-        let result = Rc::new(RefCell::new(Body::new(index)));
-        result.borrow_mut().set_world_handle(self.self_handle.as_ref().unwrap().upgrade());
+        let world = self.self_handle.as_ref().unwrap().clone();
+        let result = Rc::new(RefCell::new(Body::new(index, world)));
         self.bodies.insert(index, result.clone());
         result
     }

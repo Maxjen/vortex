@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use cgmath::*;
 use ::collision::PolygonShape;
 use ::common::Transform2d;
-use super::{WorldHandle, FixtureHandle};
+use super::{WorldHandleWeak, FixtureHandle};
 
 pub type BodyHandle<'a> = Rc<RefCell<Body<'a>>>;
 
@@ -22,11 +22,11 @@ pub struct Body<'a> {
 
     fixtures: Vec<FixtureHandle>,
 
-    world: Option<WorldHandle<'a>>,
+    world: WorldHandleWeak<'a>,
 }
 
 impl<'a> Body<'a> {
-    pub fn new(id: u32) -> Body<'a> {
+    pub fn new(id: u32, world: WorldHandleWeak<'a>) -> Body<'a> {
         Body {
             id: id,
 
@@ -37,26 +37,31 @@ impl<'a> Body<'a> {
             torque: 0.0,
             mass: 0.0,
             fixtures: Vec::new(),
-            world: None,
+            world: world,
         }
     }
 
-    pub fn set_world_handle(&mut self, world: Option<WorldHandle<'a>>) {
-        self.world = world;
-    }
-
     pub fn create_fixture(&mut self, shape: PolygonShape) {
-        let fixture = self.world.as_ref().unwrap().borrow_mut().create_fixture(self.id, shape);
-        let broad_phase = &mut self.world.as_ref().unwrap().borrow_mut().broad_phase;
+        let world = match self.world.upgrade() {
+            Some(world) => world,
+            None => return,
+        };
+        let fixture = world.borrow_mut().create_fixture(self.id, shape);
+        let broad_phase = &mut world.borrow_mut().broad_phase;
         fixture.borrow_mut().create_proxy(broad_phase, &self.transform);
         self.fixtures.push(fixture);
     }
 
     pub fn delete_fixtures(&mut self) {
+        let world = match self.world.upgrade() {
+            Some(world) => world,
+            None => return,
+        };
+
         for fixture in &self.fixtures {
-            let broad_phase = &mut self.world.as_ref().unwrap().borrow_mut().broad_phase;
+            let broad_phase = &mut world.borrow_mut().broad_phase;
             fixture.borrow_mut().destroy_proxy(broad_phase);
-            self.world.as_ref().unwrap().borrow_mut().delete_fixture(fixture.borrow().id);
+            world.borrow_mut().delete_fixture(fixture.borrow().id);
         }
     }
 
