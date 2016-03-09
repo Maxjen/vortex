@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
+use std::mem;
+use std::ptr;
 use cgmath::*;
 use super::{Body, BodyHandle, Fixture, FixtureHandle, ContactManager};
 use ::collision::{BroadPhase, PolygonShape};
@@ -12,7 +14,7 @@ pub type WorldHandleWeak<'a> = Weak<RefCell<World<'a>>>;
 
 pub struct World<'a> {
     pub broad_phase: BroadPhase,
-    contact_manager: ContactManager,
+    contact_manager: ContactManager<'a>,
 
     gravity: Vector2<f32>,
 
@@ -27,19 +29,25 @@ pub struct World<'a> {
 
 impl<'a> World<'a> {
     pub fn new(gravity: Vector2<f32>) -> WorldHandle<'a> {
-        let result = Rc::new(RefCell::new(World {
-            broad_phase: BroadPhase::new(),
-            contact_manager: ContactManager::new(),
-            gravity: gravity,
-            bodies: HashMap::new(),
-            body_index_pool: IndexPool::new(),
-            fixtures: HashMap::new(),
-            fixture_index_pool: IndexPool::new(),
-            debug_draw: None,
-            self_handle: None,
-        }));
-        let self_handle = Some(Rc::downgrade(&result));
-        result.borrow_mut().self_handle = self_handle;
+        let result;
+        unsafe {
+            result = Rc::new(RefCell::new(World {
+                broad_phase: BroadPhase::new(),
+                contact_manager: mem::uninitialized(),
+                gravity: gravity,
+                bodies: HashMap::new(),
+                body_index_pool: IndexPool::new(),
+                fixtures: HashMap::new(),
+                fixture_index_pool: IndexPool::new(),
+                debug_draw: None,
+                self_handle: None,
+            }));
+            let self_handle = Rc::downgrade(&result);
+            let contact_manager = ContactManager::new(self_handle.clone());
+            ptr::write(&mut result.borrow_mut().contact_manager, contact_manager);
+            //ptr::write(&mut result.borrow_mut().self_handle, self_handle);
+            result.borrow_mut().self_handle = Some(self_handle);
+        }
         result
     }
 
@@ -60,6 +68,14 @@ impl<'a> World<'a> {
         }
     }
 
+    pub fn get_body(&self, id: u32) -> Option<BodyHandle<'a>> {
+        if let Some(body) = self.bodies.get(&id) {
+            return Some(body.clone());
+        } else {
+            return None;
+        }
+    }
+
     pub fn create_fixture(&mut self, body_index: u32, shape: PolygonShape) -> FixtureHandle {
         let index = self.fixture_index_pool.get_index();
         let result = Rc::new(RefCell::new(Fixture::new(index, body_index, shape)));
@@ -70,6 +86,14 @@ impl<'a> World<'a> {
     pub fn delete_fixture(&mut self, id: u32) {
         if let Some(_) = self.fixtures.remove(&id) {
             self.fixture_index_pool.recycle_index(id);
+        }
+    }
+
+    pub fn get_fixture(&self, id: u32) -> Option<FixtureHandle> {
+        if let Some(fixture) = self.fixtures.get(&id) {
+            return Some(fixture.clone());
+        } else {
+            return None;
         }
     }
 
@@ -89,7 +113,7 @@ impl<'a> World<'a> {
                     let shape = &f.shape;
                     let mut vertices = Vec::new();
                     for v in &shape.vertices {
-                        vertices.push(transform.apply_to_vector(v));
+                        vertices.push(transform.apply(v));
                     }
                     debug_draw.borrow_mut().draw_polygon(&vertices);
                 }

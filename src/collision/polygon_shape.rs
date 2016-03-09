@@ -3,10 +3,12 @@ use ::common;
 use ::common::{Transform2d};
 use super::Aabb;
 
+/// A convex polygon. It is assumed that the interior of the polygon is to the left of each edge.
 pub struct PolygonShape {
     pub centroid: Vector2<f32>,
     pub vertices: Vec<Vector2<f32>>,
     pub normals: Vec<Vector2<f32>>,
+    pub radius: f32,
 }
 
 impl PolygonShape {
@@ -15,6 +17,7 @@ impl PolygonShape {
             centroid: Vector2::<f32>::new(0.0, 0.0),
             vertices: Vec::new(),
             normals: Vec::new(),
+            radius: common::POLYGON_RADIUS,
         }
     }
 
@@ -41,6 +44,7 @@ impl PolygonShape {
         self.centroid = self.centroid * 1.0 / area;
     }
 
+    /// Create a convex hull from the given vertices.
     pub fn set(&mut self, vertices: &Vec<Vector2<f32>>) {
         if vertices.len() < 3 {
             return;
@@ -122,6 +126,7 @@ impl PolygonShape {
         self.compute_centroid();
     }
 
+    /// Build vertices to represent an axis-aligned box centered on the local origin.
     pub fn set_as_box(&mut self, half_width: f32, half_height: f32) {
         self.vertices.clear();
         self.vertices.push(Vector2::new(-half_width, -half_height));
@@ -137,10 +142,10 @@ impl PolygonShape {
     }
 
     pub fn compute_aabb(&self, transform: &Transform2d) -> Aabb {
-        let mut min = transform.apply_to_vector(&self.vertices[0]);
+        let mut min = transform.apply(&self.vertices[0]);
         let mut max = min;
         for v in &self.vertices {
-            let v = transform.apply_to_vector(&v);
+            let v = transform.apply(v);
             min.x = f32::min(min.x, v.x);
             min.y = f32::min(min.y, v.y);
             max.x = f32::max(max.x, v.x);

@@ -89,6 +89,12 @@ impl BroadPhase {
         }
     }
 
+    pub fn test_overlap(&self, proxy_id_a: u32, proxy_id_b: u32) -> bool {
+        let aabb_a = self.tree.get_fat_aabb(proxy_id_a);
+        let aabb_b = self.tree.get_fat_aabb(proxy_id_b);
+        aabb_a.overlaps(&aabb_b)
+    }
+
     pub fn get_fat_aabb(&self, proxy_id: u32) -> Aabb {
         self.tree.get_fat_aabb(proxy_id)
     }

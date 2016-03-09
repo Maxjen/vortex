@@ -75,6 +75,7 @@ impl DynamicTree {
         self.node_count -= 1;
     }
 
+    /// Creates a proxy. Provide a tight fitting Aabb and an optional `u32`.
     pub fn create_proxy(&mut self, aabb: &Aabb, data_id: Option<u32>) -> u32 {
         let proxy_id = self.allocate_node();
 
@@ -88,6 +89,7 @@ impl DynamicTree {
         proxy_id
     }
 
+    /// Destroys a proxy.
     pub fn destroy_proxy(&mut self, proxy_id: u32) {
         assert!((proxy_id as usize) < self.node_capacity);
         assert!(self.nodes[proxy_id as usize].is_leaf());
@@ -96,6 +98,11 @@ impl DynamicTree {
         self.free_node(proxy_id);
     }
 
+    /// Moves a proxy with a new Aabb. If the proxy has moved outside of its fattened Aabb,
+    /// then the proxy is removed from the tree and reinserted. Otherwise the function
+    /// returns immediately.
+    ///
+    /// Returns true if the proxy was reinserted.
     pub fn move_proxy(&mut self, proxy_id: u32, aabb: &Aabb, displacement: Vector2<f32>) -> bool     {
         assert!((proxy_id as usize) < self.node_capacity);
         assert!(self.nodes[proxy_id as usize].is_leaf());
@@ -129,6 +136,7 @@ impl DynamicTree {
         true
     }
 
+    /// Returns the fat Aabb for a proxy.
     pub fn get_fat_aabb(&self, proxy_id: u32) -> Aabb {
         assert!((proxy_id as usize) < self.node_capacity);
         self.nodes[proxy_id as usize].aabb.clone()
