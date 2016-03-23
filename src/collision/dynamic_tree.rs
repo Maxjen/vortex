@@ -11,21 +11,21 @@ pub trait TreeCallback {
     fn query_callback(&mut self, proxy_id: u32) -> bool;
 }
 
-pub struct TreeNode {
+pub struct TreeNode<T> {
     parent: u32,
     children: (u32, u32),
     aabb: Aabb,
-    data_id: Option<u32>,
+    user_data: Option<T>,
     height: i32,
 }
 
-impl TreeNode {
+impl<T> TreeNode<T> {
     pub fn new() -> Self {
         TreeNode {
             parent: NULL_NODE,
             children: (NULL_NODE, NULL_NODE),
             aabb: Aabb::new(),
-            data_id: None,
+            user_data: None,
             height: -1,
         }
     }
@@ -35,15 +35,15 @@ impl TreeNode {
     }
 }
 
-pub struct DynamicTree {
+pub struct DynamicTree<T> {
     root: u32,
-    nodes: Vec<TreeNode>,
+    nodes: Vec<TreeNode<T>>,
     index_pool: IndexPool,
     node_count: usize,
     node_capacity: usize,
 }
 
-impl DynamicTree {
+impl<T> DynamicTree<T> {
     pub fn new() -> Self {
         let mut result = DynamicTree {
             root: NULL_NODE,
@@ -76,12 +76,12 @@ impl DynamicTree {
     }
 
     /// Creates a proxy. Provide a tight fitting Aabb and an optional `u32`.
-    pub fn create_proxy(&mut self, aabb: &Aabb, data_id: Option<u32>) -> u32 {
+    pub fn create_proxy(&mut self, aabb: &Aabb, user_data: Option<T>) -> u32 {
         let proxy_id = self.allocate_node();
 
         self.nodes[proxy_id as usize].aabb.min = aabb.min - common::AABB_EXTENSION;
         self.nodes[proxy_id as usize].aabb.max = aabb.max + common::AABB_EXTENSION;
-        self.nodes[proxy_id as usize].data_id = data_id;
+        self.nodes[proxy_id as usize].user_data = user_data;
         self.nodes[proxy_id as usize].height = 0;
 
         self.insert_leaf(proxy_id);
@@ -142,9 +142,9 @@ impl DynamicTree {
         self.nodes[proxy_id as usize].aabb.clone()
     }
 
-    pub fn get_data_id(&self, proxy_id: u32) -> Option<u32> {
+    pub fn get_user_data(&self, proxy_id: u32) -> Option<&T> {
         assert!((proxy_id as usize) < self.node_capacity);
-        self.nodes[proxy_id as usize].data_id
+        self.nodes[proxy_id as usize].user_data.as_ref()
     }
 
     pub fn query(&self, callback: &mut TreeCallback, aabb: &Aabb) {

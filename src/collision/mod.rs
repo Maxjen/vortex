@@ -1,5 +1,6 @@
 pub use self::dynamic_tree::{DynamicTree, TreeCallback};
 pub use self::broad_phase::{BroadPhase, BroadPhaseCallback};
+pub use self::shape::Shape;
 pub use self::polygon_shape::PolygonShape;
 pub use self::collide_polygons::collide_polygons;
 
@@ -7,18 +8,21 @@ use cgmath::*;
 
 mod dynamic_tree;
 mod broad_phase;
+mod shape;
 mod polygon_shape;
 mod collide_polygons;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FeatureType {
     Vertex,
     Face,
 }
 
-/// The features that intersect to form the contact point.
-#[derive(Clone, Copy)]
-pub struct ContactFeature {
+/// Contact ids to facilitate warm starting.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ContactId {
+    // The features that intersect to form the contact point.
+    //
     // Feature index on shape_a
     index_a: u8,
     // Feature index on shape_b
@@ -29,21 +33,24 @@ pub struct ContactFeature {
     type_b: FeatureType,
 }
 
-/// Contact ids to facilitate warm starting.
-#[derive(Clone, Copy)]
-pub enum ContactId {
-    Feature(ContactFeature),
-    /// Used to quickly compare contact ids.
-    Key(u32),
+impl ContactId {
+    pub fn new() -> Self {
+        ContactId {
+            index_a: 0,
+            index_b: 0,
+            type_a: FeatureType::Vertex,
+            type_b: FeatureType::Vertex,
+        }
+    }
 }
 
 /// A contact point belonging to a manifold.
 #[derive(Clone)]
 pub struct ManifoldPoint {
     local_point: Vector2<f32>,
-    normal_impulse: f32,
-    tangent_impulse: f32,
-    id: ContactId,
+    pub normal_impulse: f32,
+    pub tangent_impulse: f32,
+    pub id: ContactId,
 }
 
 impl ManifoldPoint {
@@ -94,7 +101,7 @@ impl ClipVertex {
     pub fn new() -> Self {
         ClipVertex {
             v: Vector2::<f32>::new(0.0, 0.0),
-            id: ContactId::Key(0),
+            id: ContactId::new(),
         }
     }
 
@@ -126,19 +133,16 @@ impl ClipVertex {
             let interp = distance0 / (distance0 - distance1);
 
             // vertex_a is hitting edge_b.
-            let index_b = match segment[0].id {
-                ContactId::Feature(feature) => feature.index_b,
-                _ => return None,
-            };
+            let index_b = segment[0].id.index_b;
 
             clipped_segment[1] = ClipVertex {
                 v: segment[0].v + (segment[1].v - segment[0].v) * interp,
-                id: ContactId::Feature(ContactFeature {
+                id: ContactId {
                     index_a: vertex_index_a as u8,
                     index_b: index_b,
                     type_a: FeatureType::Vertex,
                     type_b: FeatureType::Face,
-                }),
+                },
             };
         }
         Some(clipped_segment)

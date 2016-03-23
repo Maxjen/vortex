@@ -1,10 +1,10 @@
-use super::{DynamicTree, TreeCallback};
-use super::Aabb;
+use super::{Aabb, DynamicTree, TreeCallback};
+use ::dynamics::FixtureHandle;
 use cgmath::*;
 use std::cmp;
 
-pub trait BroadPhaseCallback {
-    fn add_pair(&mut self, data_id_a: Option<u32>, data_id_b: Option<u32>);
+pub trait BroadPhaseCallback<'a> {
+    fn add_pair(&mut self, fixture_a: FixtureHandle<'a>, fixture_b: FixtureHandle<'a>);
 }
 
 struct PairManager {
@@ -39,13 +39,13 @@ impl TreeCallback for PairManager {
     }
 }
 
-pub struct BroadPhase {
-    tree: DynamicTree,
+pub struct BroadPhase<'a> {
+    tree: DynamicTree<FixtureHandle<'a>>,
     pair_manager: PairManager,
     move_buffer: Vec<u32>,
 }
 
-impl BroadPhase {
+impl<'a> BroadPhase<'a> {
     pub fn new() -> Self {
         BroadPhase {
             tree: DynamicTree::new(),
@@ -54,8 +54,8 @@ impl BroadPhase {
         }
     }
 
-    pub fn create_proxy(&mut self, aabb: &Aabb, data_id: Option<u32>) -> u32 {
-        let result = self.tree.create_proxy(aabb, data_id);
+    pub fn create_proxy(&mut self, aabb: &Aabb, fixture: FixtureHandle<'a>) -> u32 {
+        let result = self.tree.create_proxy(aabb, Some(fixture));
         self.move_buffer.push(result);
         result
     }
@@ -99,11 +99,11 @@ impl BroadPhase {
         self.tree.get_fat_aabb(proxy_id)
     }
 
-    pub fn get_data_id(&self, proxy_id: u32) -> Option<u32> {
-        self.tree.get_data_id(proxy_id)
-    }
+    /*pub fn get_user_data(&self, proxy_id: u32) -> Option<&FixtureHandle> {
+        self.tree.get_user_data(proxy_id)
+    }*/
 
-    pub fn update_pairs(&mut self, callback: &mut BroadPhaseCallback) {
+    pub fn update_pairs(&mut self, callback: &mut BroadPhaseCallback<'a>) {
         self.pair_manager.pairs.clear();
 
         for i in &self.move_buffer {
@@ -118,9 +118,9 @@ impl BroadPhase {
         self.pair_manager.pairs.dedup();
 
         for &(proxy_id_a, proxy_id_b) in &self.pair_manager.pairs {
-            let data_id_a = self.tree.get_data_id(proxy_id_a);
-            let data_id_b = self.tree.get_data_id(proxy_id_b);
-            callback.add_pair(data_id_a, data_id_b);
+            let fixture_a = self.tree.get_user_data(proxy_id_a).unwrap().clone();
+            let fixture_b = self.tree.get_user_data(proxy_id_b).unwrap().clone();
+            callback.add_pair(fixture_a, fixture_b);
         }
     }
 

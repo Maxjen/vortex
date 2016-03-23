@@ -1,4 +1,4 @@
-use super::{PolygonShape, ManifoldPoint, ManifoldType, Manifold, ContactId, FeatureType, ContactFeature, ClipVertex};
+use super::{PolygonShape, ManifoldPoint, ManifoldType, Manifold, ContactId, FeatureType, ClipVertex};
 use ::common;
 use ::common::Transform2d;
 use cgmath::*;
@@ -62,21 +62,21 @@ fn find_incident_edge(poly1: &PolygonShape, transform1: &Transform2d, edge1: usi
     [
         ClipVertex {
             v: transform2.apply(&poly2.vertices[index1]),
-            id: ContactId::Feature(ContactFeature {
+            id: ContactId {
                 index_a: edge1 as u8,
                 index_b: index1 as u8,
                 type_a: FeatureType::Face,
                 type_b: FeatureType::Vertex,
-            }),
+            },
         },
         ClipVertex {
             v: transform2.apply(&poly2.vertices[index2]),
-            id: ContactId::Feature(ContactFeature {
+            id: ContactId {
                 index_a: edge1 as u8,
                 index_b: index2 as u8,
                 type_a: FeatureType::Face,
                 type_b: FeatureType::Vertex,
-            }),
+            },
         },
     ]
 }
@@ -189,16 +189,13 @@ pub fn collide_polygons(poly_a: &PolygonShape, transform_a: &Transform2d,
         if separation <= total_radius {
             use std::mem;
 
-            let mut cf = match cp.id {
-                ContactId::Feature(cf) => cf,
-                _ => return manifold,
-            };
+            let mut c_id = cp.id;
             if flip {
-                mem::swap(&mut cf.index_a, &mut cf.index_b);
-                mem::swap(&mut cf.type_a, &mut cf.type_b);
+                mem::swap(&mut c_id.index_a, &mut c_id.index_b);
+                mem::swap(&mut c_id.type_a, &mut c_id.type_b);
             }
 
-            manifold.points.push(ManifoldPoint::new(transform2.apply_t(&cp.v), ContactId::Feature(cf)));
+            manifold.points.push(ManifoldPoint::new(transform2.apply_t(&cp.v), c_id));
         }
     }
 

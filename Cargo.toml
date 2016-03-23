@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Max Jensen <maxjen@gmail.com>"]
 
 [dependencies]
+time = "0.1"
 glium = "*"
 cgmath = "*"
 inferno = { git = "https://github.com/Maxjen/inferno"}
