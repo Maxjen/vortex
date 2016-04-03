@@ -92,7 +92,7 @@ fn find_incident_edge(poly1: &PolygonShape, transform1: &Transform2d, edge1: usi
 pub fn collide_polygons(poly_a: &PolygonShape, transform_a: &Transform2d,
                         poly_b: &PolygonShape, transform_b: &Transform2d) -> Manifold {
     let mut manifold = Manifold::new();
-    let total_radius = poly_a.radius + poly_b.radius;
+    let total_radius = 2.0 * common::POLYGON_RADIUS;
 
     let (edge_a, separation_a) = find_max_separation(poly_a, transform_a, poly_b, transform_b);
     if separation_a > total_radius {
@@ -143,18 +143,12 @@ pub fn collide_polygons(poly_a: &PolygonShape, transform_a: &Transform2d,
     let mut local_tangent = v12 - v11;
     local_tangent = local_tangent.normalize();
 
-    let local_normal = Vector2::<f32> {
-        x: local_tangent.y,
-        y: -local_tangent.x,
-    };
+    let local_normal = common::cross_v_s(&local_tangent, 1.0);
 
     let plane_point = (v11 + v12) * 0.5;
 
     let tangent = transform1.rotation.apply(&local_tangent);
-    let normal = Vector2::<f32> {
-        x: tangent.y,
-        y: -tangent.x,
-    };
+    let normal = common::cross_v_s(&tangent, 1.0);
 
     v11 = transform1.apply(&v11);
     v12 = transform1.apply(&v12);

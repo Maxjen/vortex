@@ -10,6 +10,12 @@ mod index_pool;
 mod timer;
 pub mod debug_draw;
 
+//
+// Global tuning constants based on meters-kilograms-seconds (MKS) units.
+//
+
+// Collision
+
 /// This is used to fatten Aabbs in the dynamic tree. This allows proxies to move by a small
 /// amount without triggering a tree adjustment. This is in meters
 pub const AABB_EXTENSION: f32 = 0.1;
@@ -22,6 +28,61 @@ pub const LINEAR_SLOP: f32 = 0.005;
 /// means polygons will have an insufficient buffer for continues collision. Making it larger
 /// may create artifacts for vertex collision.
 pub const POLYGON_RADIUS: f32 = 2.0 * LINEAR_SLOP;
+
+/// Maximum number of sub-steps per contact in continuous physics simulation.
+pub const MAX_SUB_STEPS: u32 = 8;
+
+// Dynamics
+
+/// Maximum number of iterations per TOI impact.
+pub const MAX_TOI_ITERATIONS: usize = 20;
+
+/// Maximum number of contacts to be handled to solve a TOI impact.
+pub const MAX_TOI_CONTACTS: usize = 32;
+
+/// A velocity threshold for elastic collisions. Any collision with a relative linear velocity
+/// below this threshold will be treated as inelasti
+pub const VELOCITY_THRESHOLD: f32 = 1.0;
+
+/// The maximum linear position correction used when solving constraints. This helps to
+/// prevent overshoot.
+pub const MAX_LINEAR_CORRECTION: f32 = 0.2;
+
+/// The maximum linear velocity of a body. This limit is very large and is used
+/// to prevent numerical problems. You shouldn't need to adjust this.
+pub const MAX_TRANSLATION: f32 = 2.0;
+pub const MAX_TRANSLATION_SQUARED: f32 = MAX_TRANSLATION * MAX_TRANSLATION;
+
+/// The maximum angular velocity of a body. This limit is very large and is used
+/// to prevent numerical problems. You shouldn't need to adjust this.
+pub const MAX_ROTATION: f32 = 0.5 * f32::consts::PI;
+pub const MAX_ROTATION_SQUARED: f32 = MAX_ROTATION * MAX_ROTATION;
+
+/// This scale factor controls how fast overlap is resolved. Ideally this would be 1 so
+/// that overlap is removed in one time step. However, using values close to 1 often lead
+/// to overshoot.
+pub const BAUMGARTE: f32 = 0.2;
+pub const TOI_BAUMGARTE: f32 = 0.75;
+
+/// Performs the cross product on a vector and a scalar. In 2D this produces a vector.
+pub fn cross_v_s(v: &Vector2<f32>, s: f32) -> Vector2<f32> {
+    Vector2::<f32> {
+        x: s * v.y,
+        y: -s * v.x,
+    }
+}
+
+/// Performs the cross product on a scalar and a vector. In 2D this produces a vector.
+pub fn cross_s_v(s: f32, v: &Vector2<f32>) -> Vector2<f32> {
+    Vector2::<f32> {
+        x: -s * v.y,
+        y: s * v.x,
+    }
+}
+
+pub fn clamp_f32(s: f32, low: f32, high: f32) -> f32 {
+    f32::max(low, f32::min(s, high))
+}
 
 #[derive(Clone, Copy)]
 pub struct Rotation2d {
@@ -116,7 +177,7 @@ impl Default for Transform2d {
     /// Constructs a new identity transform.
     fn default() -> Transform2d {
         Transform2d {
-            position: Vector2::<f32>::new(0.0, 0.0),
+            position: Vector2::zero(),
             rotation: Default::default(),
         }
     }
@@ -182,9 +243,9 @@ pub struct Sweep {
 impl Default for Sweep {
     fn default() -> Sweep {
         Sweep {
-            local_center: Vector2::<f32>::new(0.0, 0.0),
-            c0: Vector2::<f32>::new(0.0, 0.0),
-            c: Vector2::<f32>::new(0.0, 0.0),
+            local_center: Vector2::zero(),
+            c0: Vector2::zero(),
+            c: Vector2::zero(),
             a0: 0.0,
             a: 0.0,
             alpha0: 0.0,

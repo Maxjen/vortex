@@ -1,5 +1,5 @@
 use ::collision::{BroadPhase, BroadPhaseCallback};
-use super::{WorldHandleWeak, ContactHandle, PolygonContact, Body, Fixture, FixtureHandle};
+use super::{WorldHandleWeak, ContactHandle, Contact, Body, Fixture, FixtureHandle};
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -50,7 +50,8 @@ impl<'a> BroadPhaseCallback<'a> for ContactManager<'a> {
             }
         }
 
-        let contact = PolygonContact::new(fixture_a, fixture_b, body_a, body_b);
+        // Insert into the world.
+        let contact = Contact::new(fixture_a, fixture_b);
         self.contacts.push(contact);
     }
 }
@@ -67,10 +68,11 @@ impl<'a> ContactManager<'a> {
         self.contacts.len()
     }
 
+    /// This is the top level collision call for the time step. Here all the narrow phase
+    /// collison is processed for the world contact list.
     pub fn collide(&mut self) {
         let mut to_remove = Vec::new();
         for (i, contact) in self.contacts.iter_mut().enumerate() {
-
             let world = try_some!(self.world.upgrade());
             let broad_phase = &world.borrow().broad_phase;
             let overlap;
@@ -78,12 +80,17 @@ impl<'a> ContactManager<'a> {
                 let contact = contact.borrow();
                 overlap = broad_phase.test_overlap(contact.fixture_a.borrow().proxy_id, contact.fixture_b.borrow().proxy_id);
             }
+
+            // Here we destroy contacts that cease to overlap in the broad phase.
             if !overlap {
                 to_remove.push(i);
                 continue;
             }
+
+            // The contact persists.
             contact.borrow_mut().update(&world.borrow());
         }
+
         for i in &to_remove {
             self.contacts.swap_remove(*i);
         }

@@ -1,5 +1,6 @@
 use super::{BodyHandleWeak, ContactHandleWeak, ContactSolver};
 use super::world::{Profile, TimeStep};
+use ::common;
 use ::common::Timer;
 use cgmath::*;
 
@@ -126,13 +127,13 @@ However, we can compute sin+cos of the same angle fast.
 */
 
 pub struct Position {
-    c: Vector2<f32>,
-    a: f32,
+    pub c: Vector2<f32>,
+    pub a: f32,
 }
 
 pub struct Velocity {
-    v: Vector2<f32>,
-    w: f32,
+    pub v: Vector2<f32>,
+    pub w: f32,
 }
 
 pub struct Island<'a> {
@@ -159,6 +160,8 @@ impl<'a> Island<'a> {
     }
 
     pub fn add_body(&mut self, body: BodyHandleWeak<'a>) {
+        let body_tmp = body.upgrade().unwrap();
+        body_tmp.borrow_mut().island_index = self.bodies.len();
         self.bodies.push(body);
     }
 
@@ -211,19 +214,184 @@ impl<'a> Island<'a> {
 
         let mut contact_solver = ContactSolver::new(*step, &self.contacts);
 
+        // Initialize velocity_constraints.
+        contact_solver.initialize_velocity_constraints(&self.contacts, &self.positions, &self.velocities);
+
         if step.warm_starting {
-            contact_solver.warm_start();
+            contact_solver.warm_start(&mut self.velocities);
         }
 
         profile.solve_init = timer.get_milliseconds();
 
         // Solve velocity constraints.
         timer.reset();
-        for i in 0..step.velocity_iterations {
-            contact_solver.solve_velocity_constraints();
+        for _ in 0..step.velocity_iterations {
+            contact_solver.solve_velocity_constraints(&mut self.velocities);
         }
 
         // Store impulses for warm starting.
-        contact_solver.store_impulses();
+        contact_solver.store_impulses(&self.contacts);
+        profile.solve_velocity = timer.get_milliseconds();
+
+        // Integrate positions.
+        for i in 0..self.bodies.len() {
+            let mut c = self.positions[i].c;
+            let mut a = self.positions[i].a;
+            let mut v = self.velocities[i].v;
+            let mut w = self.velocities[i].w;
+
+            // Check for large velocities.
+            let translation = v * dt;
+            if translation.length2() > common::MAX_TRANSLATION_SQUARED {
+                let ratio = common::MAX_TRANSLATION / translation.length();
+                v = v * ratio;
+            }
+
+            let rotation = w * dt;
+            if rotation * rotation > common::MAX_ROTATION_SQUARED {
+                let ratio = common::MAX_ROTATION / rotation.abs();
+                w *= ratio;
+            }
+
+            // Integrate.
+            c = c + v * dt;
+            a += w * dt;
+
+            self.positions[i].c = c;
+            self.positions[i].a = a;
+            self.velocities[i].v = v;
+            self.velocities[i].w = w;
+        }
+
+        // Solve position constraints.
+        timer.reset();
+        let mut position_solved = false;
+        for _ in 0..step.position_iterations {
+            let contacts_okay = contact_solver.solve_position_constraints(&mut self.positions);
+
+            let mut joints_okay = true;
+
+            if contacts_okay && joints_okay {
+                // Exit early if the position errors are small.
+                position_solved = true;
+                break;
+            }
+        }
+
+        // Copy state buffers back to the bodies.
+        for i in 0..self.bodies.len() {
+            let body = self.bodies[i].upgrade().unwrap();
+            let mut body = body.borrow_mut();
+            body.sweep.c = self.positions[i].c;
+            body.sweep.a = self.positions[i].a;
+            body.set_linear_velocity(self.velocities[i].v);
+            body.set_angular_velocity(self.velocities[i].w);
+            body.synchronize_transform();
+        }
+
+        profile.solve_position = timer.get_milliseconds();
+    }
+
+    pub fn solve_toi(&mut self, sub_step: &TimeStep, toi_index_a: usize, toi_index_b: usize) {
+        assert!(toi_index_a < self.bodies.len());
+        assert!(toi_index_b < self.bodies.len());
+
+        // Initialize the body state.
+        for b in &self.bodies {
+            let b = b.upgrade().unwrap();
+            let b = b.borrow();
+            self.positions.push(Position {
+                c: b.sweep.c,
+                a: b.sweep.a,
+            });
+            self.velocities.push(Velocity {
+                v: b.get_linear_velocity(),
+                w: b.get_angular_velocity(),
+            });
+        }
+
+        let mut contact_solver = ContactSolver::new(*sub_step, &self.contacts);
+
+        // Solve position constraints.
+        for _ in 0..sub_step.position_iterations {
+            let contacts_okay = contact_solver.solve_toi_position_constraints(&mut self.positions, toi_index_a, toi_index_b);
+            if contacts_okay {
+                break;
+            }
+        }
+
+        // Is the new position really safe?
+        /*for c in &self.contacts {
+            let c = c.upgrade().unwrap();
+            let c = c.borrow();
+            let f_a = c.fixture_a.clone();
+            let f_b = c.fixture_b.clone();
+
+            let b_a = f_a.borrow().body.clone().upgrade().unwrap();
+            let b_b = f_b.borrow().body.clone().upgrade().unwrap();
+
+            // TODO
+        }*/
+
+        // Leap of faith to new safe state.
+        let b_a = self.bodies[toi_index_a].upgrade().unwrap();
+        let b_b = self.bodies[toi_index_b].upgrade().unwrap();
+        b_a.borrow_mut().sweep.c0 = self.positions[toi_index_a].c;
+        b_a.borrow_mut().sweep.a0 = self.positions[toi_index_a].a;
+        b_b.borrow_mut().sweep.c0 = self.positions[toi_index_b].c;
+        b_b.borrow_mut().sweep.a0 = self.positions[toi_index_b].a;
+
+        // No warm starting is needed for TOI events because warm
+        // starting impulses were applied in the discrete solver.
+        contact_solver.initialize_velocity_constraints(&self.contacts, &self.positions, &self.velocities);
+
+        // Solve velocity constraints.
+        for _ in 0..sub_step.velocity_iterations {
+            contact_solver.solve_velocity_constraints(&mut self.velocities);
+        }
+
+        // Don't store the TOI contact forces for warm starting
+        // because they can be quite large.
+
+        let dt = sub_step.dt;
+
+        // Integrate positions.
+        for i in 0..self.bodies.len() {
+            let mut c = self.positions[i].c;
+            let mut a = self.positions[i].a;
+            let mut v = self.velocities[i].v;
+            let mut w = self.velocities[i].w;
+
+            // Check for large velocities.
+            let translation = v * dt;
+            if translation.length2() > common::MAX_TRANSLATION_SQUARED {
+                let ratio = common::MAX_TRANSLATION / translation.length();
+                v = v * ratio;
+            }
+
+            let rotation = w * dt;
+            if rotation * rotation > common::MAX_ROTATION_SQUARED {
+                let ratio = common::MAX_ROTATION / rotation.abs();
+                w *= ratio;
+            }
+
+            // Integrate.
+            c = c + v * dt;
+            a += w * dt;
+
+            self.positions[i].c = c;
+            self.positions[i].a = a;
+            self.velocities[i].v = v;
+            self.velocities[i].w = w;
+
+            // Sync bodies.
+            let body = self.bodies[i].upgrade().unwrap();
+            let mut body = body.borrow_mut();
+            body.sweep.c = c;
+            body.sweep.a = a;
+            body.set_linear_velocity(v);
+            body.set_angular_velocity(w);
+            body.synchronize_transform();
+        }
     }
 }

@@ -10,18 +10,20 @@ pub struct Fixture<'a> {
     pub id: u32,
     pub body: BodyHandleWeak<'a>,
     //density: f32,
-    pub shape: PolygonShape,
-    /*friction: f32,
-    restitution: f32,*/
+    pub shape: Shape,
+    pub friction: f32,
+    pub restitution: f32,
     pub proxy_id: u32,
 }
 
 impl<'a> Fixture<'a> {
-    pub fn new(id: u32, body: BodyHandleWeak<'a>, shape: PolygonShape) -> Self {
+    pub fn new(id: u32, body: BodyHandleWeak<'a>, shape: Shape) -> Self {
         Fixture {
             id: id,
             body: body,
             shape: shape,
+            friction: 0.2,
+            restitution: 0.0,
             proxy_id: 0,
         }
     }

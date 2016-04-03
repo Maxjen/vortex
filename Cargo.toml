@@ -2,12 +2,17 @@
 name = "vortex"
 version = "0.1.0"
 authors = ["Max Jensen <maxjen@gmail.com>"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 time = "0.1"
-glium = "*"
 cgmath = "*"
+glium = "*"
 inferno = { git = "https://github.com/Maxjen/inferno"}
+
+#[dev-dependencies]
+#glium = "*"
+#inferno = { git = "https://github.com/Maxjen/inferno"}
 
 [[bin]]
 name = "vortex_test"

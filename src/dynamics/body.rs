@@ -1,8 +1,8 @@
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use cgmath::*;
-use ::collision::PolygonShape;
-use ::common::{Transform2d, Sweep};
+use ::collision::Shape;
+use ::common::{Rotation2d, Transform2d, Sweep};
 use super::{WorldHandleWeak, FixtureHandle, ContactEdge};
 
 pub type BodyHandle<'a> = Rc<RefCell<Body<'a>>>;
@@ -32,6 +32,10 @@ pub struct Body<'a> {
     pub gravity_scale: f32,
 
     pub is_island: bool,
+    pub is_awake: bool,
+    pub is_bullet: bool,
+
+    pub island_index: usize,
 
     fixtures: Vec<FixtureHandle<'a>>,
     contact_edges: Vec<ContactEdge<'a>>,
@@ -45,9 +49,9 @@ impl<'a> Body<'a> {
             id: id,
             transform: Transform2d::default(),
             sweep: Sweep::default(),
-            linear_velocity: Vector2::new(0.0, 0.0),
+            linear_velocity: Vector2::zero(),
             angular_velocity: 0.0,
-            force: Vector2::new(0.0, 0.0),
+            force: Vector2::zero(),
             torque: 0.0,
             mass: 1.0,
             inv_mass: 1.0,
@@ -57,13 +61,16 @@ impl<'a> Body<'a> {
             angular_damping: 0.0,
             gravity_scale: 1.0,
             is_island: false,
+            is_awake: true,
+            is_bullet: false,
+            island_index: 0,
             fixtures: Vec::new(),
             contact_edges: Vec::new(),
             world: world,
         }
     }
 
-    pub fn create_fixture(&mut self, shape: PolygonShape) {
+    pub fn create_fixture(&mut self, shape: Shape) {
         let world = match self.world.upgrade() {
             Some(world) => world,
             None => return,
@@ -99,6 +106,10 @@ impl<'a> Body<'a> {
 
     pub fn add_contact_edge(&mut self, contact_edge: ContactEdge<'a>) {
         self.contact_edges.push(contact_edge);
+    }
+
+    pub fn remove_contact_edge(&mut self, contact_edge: ContactEdge<'a>) {
+
     }
 
     pub fn set_transform(&mut self, position: &Vector2<f32>, angle: f32) {
@@ -140,5 +151,18 @@ impl<'a> Body<'a> {
 
     pub fn apply_torque(&mut self, torque: f32) {
         self.torque += torque;
+    }
+
+    pub fn synchronize_transform(&mut self) {
+        self.transform.rotation.set_angle(self.sweep.a);
+        self.transform.position = self.sweep.c - self.transform.rotation.apply(&self.sweep.local_center);
+    }
+
+    pub fn synchronize_fixtures(&mut self) {
+        let rotation = Rotation2d::new(self.sweep.a0);
+        let position = self.sweep.c0 - rotation.apply(&self.sweep.local_center);
+        let transform = Transform2d::new(position, rotation);
+
+        unimplemented!();
     }
 }

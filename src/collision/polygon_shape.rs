@@ -1,3 +1,4 @@
+use std::f32;
 use cgmath::*;
 use ::common;
 use ::common::{Transform2d};
@@ -8,16 +9,14 @@ pub struct PolygonShape {
     pub centroid: Vector2<f32>,
     pub vertices: Vec<Vector2<f32>>,
     pub normals: Vec<Vector2<f32>>,
-    pub radius: f32,
 }
 
 impl PolygonShape {
     pub fn new() -> PolygonShape {
         PolygonShape {
-            centroid: Vector2::<f32>::new(0.0, 0.0),
+            centroid: Vector2::zero(),
             vertices: Vec::new(),
             normals: Vec::new(),
-            radius: common::POLYGON_RADIUS,
         }
     }
 
@@ -26,19 +25,32 @@ impl PolygonShape {
         self.centroid.y = 0.0;
         let mut area = 0.0;
 
-        let p_ref = Vector2::<f32>::new(0.0, 0.0);
+        // p_ref is the reference point for forming triangles.
+        // Its location doesn't change the result (except for rounding error).
+        let p_ref = Vector2::<f32>::zero();
+        // This code would put the reference point inside the polygon.
+        // for v in &self.vertices {
+        //     p_ref = p_ref + v;
+        // }
+        // p_ref = p_ref * 1.0 / self.vertices.len();
+
         let inv3 = 1.0 / 3.0;
         for i in 0..self.vertices.len() {
+            // Triangle vertices. (p_ref would be p0)
             let p1 = self.vertices[i];
             let p2 = if i + 1 < self.vertices.len() {
                 self.vertices[i + 1]
             } else {
                 self.vertices[0]
             };
+
             let e1 = p1 - p_ref;
             let e2 = p2 - p_ref;
+
             let triangle_area = 0.5 * e1.perp_dot(e2);
             area += triangle_area;
+
+            // Area weighted centroid.
             self.centroid = self.centroid + (p_ref + p1 + p2) * triangle_area * inv3;
         }
         self.centroid = self.centroid * 1.0 / area;
@@ -52,6 +64,7 @@ impl PolygonShape {
 
         let mut vertices_tmp = Vec::<Vector2<f32>>::new();
 
+        // Perform welding and copy vertices into local buffer.
         'outer: for v in vertices {
             for v_tmp in &vertices_tmp {
                 if (v - v_tmp).length2() < (0.5 * common::LINEAR_SLOP) * (0.5 * common::LINEAR_SLOP) {
@@ -65,6 +78,10 @@ impl PolygonShape {
             return;
         }
 
+        // Create the convex hull using the Gift wrapping algorithm.
+        // http://en.wikipedia.org/wiki/Gift_wrapping_algorithm
+
+        // Find the rightmost point on the hull.
         let mut i0 = 0;
         //let mut x0 = vertices_tmp.first().unwrap().x;
         //let mut y0 = vertices_tmp.first().unwrap().x;
@@ -92,6 +109,8 @@ impl PolygonShape {
                 if c < 0.0 {
                     ie = i;
                 }
+
+                // Collinearity check.
                 if c == 0.0 && v.length2() > r.length2() {
                     ie = i;
                 }
@@ -104,13 +123,16 @@ impl PolygonShape {
         }
 
         if hull.len() < 3 {
+            // Polygon is degenerate.
             return;
         }
 
+        // Copy vertices.
         for i in &hull {
             self.vertices.push(vertices_tmp[*i]);
         }
 
+        // Compute normals. Ensure the edges have non-zero length.
         for i in 0..self.vertices.len() {
             let i2 = if i + 1 < self.vertices.len() {
                 i + 1
@@ -118,7 +140,8 @@ impl PolygonShape {
                 0
             };
             let edge = self.vertices[i2] - self.vertices[i];
-            let mut normal = Vector2::<f32>::new(edge.y, -edge.x);
+            assert!(edge.length2() > f32::EPSILON * f32::EPSILON);
+            let mut normal = common::cross_v_s(&edge, 1.0);
             normal = normal.normalize();
             self.normals.push(normal);
         }
@@ -129,16 +152,18 @@ impl PolygonShape {
     /// Build vertices to represent an axis-aligned box centered on the local origin.
     pub fn set_as_box(&mut self, half_width: f32, half_height: f32) {
         self.vertices.clear();
-        self.vertices.push(Vector2::new(-half_width, -half_height));
-        self.vertices.push(Vector2::new(half_width, -half_height));
-        self.vertices.push(Vector2::new(half_width, half_height));
-        self.vertices.push(Vector2::new(-half_width, half_height));
+        self.vertices.push(vec2(-half_width, -half_height));
+        self.vertices.push(vec2(half_width, -half_height));
+        self.vertices.push(vec2(half_width, half_height));
+        self.vertices.push(vec2(-half_width, half_height));
 
         self.normals.clear();
-        self.normals.push(Vector2::new(0.0, -1.0));
-        self.normals.push(Vector2::new(1.0, 0.0));
-        self.normals.push(Vector2::new(0.0, 1.0));
-        self.normals.push(Vector2::new(-1.0, 0.0));
+        self.normals.push(vec2(0.0, -1.0));
+        self.normals.push(vec2(1.0, 0.0));
+        self.normals.push(vec2(0.0, 1.0));
+        self.normals.push(vec2(-1.0, 0.0));
+
+        self.centroid = Vector2::zero();
     }
 
     pub fn compute_aabb(&self, transform: &Transform2d) -> Aabb {

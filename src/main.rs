@@ -5,7 +5,7 @@ extern crate inferno;
 
 use inferno::rendering::{ColorVertex2d, DrawBatch};
 use cgmath::*;
-use vortex::collision::PolygonShape;
+use vortex::collision::{Shape, PolygonShape};
 use vortex::common::{DebugDraw};
 use vortex::dynamics::World;
 use std::rc::Rc;
@@ -87,12 +87,12 @@ fn main() {
     let mut shape = PolygonShape::new();
     shape.set(&vertices);
     let body = world.borrow_mut().create_body();
-    body.borrow_mut().create_fixture(shape);
+    body.borrow_mut().create_fixture(Shape::Polygon(shape));
 
     let mut shape2 = PolygonShape::new();
     shape2.set_as_box(50.0, 50.0);
     let body2 = world.borrow_mut().create_body();
-    body2.borrow_mut().create_fixture(shape2);
+    body2.borrow_mut().create_fixture(Shape::Polygon(shape2));
     body2.borrow_mut().set_transform(&Vector2::<f32>::new(500.0, -300.0), 0.8);
 
     world.borrow_mut().test();

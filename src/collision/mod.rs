@@ -3,14 +3,18 @@ pub use self::broad_phase::{BroadPhase, BroadPhaseCallback};
 pub use self::shape::Shape;
 pub use self::polygon_shape::PolygonShape;
 pub use self::collide_polygons::collide_polygons;
+pub use self::distance::{DistanceProxy, SimplexCache};
 
 use cgmath::*;
+use ::common::{Transform2d};
 
 mod dynamic_tree;
 mod broad_phase;
 mod shape;
 mod polygon_shape;
 mod collide_polygons;
+mod time_of_impact;
+mod distance;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FeatureType {
@@ -47,7 +51,7 @@ impl ContactId {
 /// A contact point belonging to a manifold.
 #[derive(Clone)]
 pub struct ManifoldPoint {
-    local_point: Vector2<f32>,
+    pub local_point: Vector2<f32>,
     pub normal_impulse: f32,
     pub tangent_impulse: f32,
     pub id: ContactId,
@@ -64,7 +68,7 @@ impl ManifoldPoint {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum ManifoldType {
     FaceA,
     FaceB,
@@ -73,6 +77,7 @@ pub enum ManifoldType {
 /// A manifold for two touching convex shapes.
 #[derive(Clone)]
 pub struct Manifold {
+    /// The points of contact.
     pub points: Vec<ManifoldPoint>,
     pub local_normal: Vector2<f32>,
     pub local_point: Vector2<f32>,
@@ -83,9 +88,73 @@ impl Manifold {
     pub fn new() -> Self {
         Manifold {
             points: Vec::with_capacity(2),
-            local_normal: Vector2::<f32>::new(0.0, 0.0),
-            local_point: Vector2::<f32>::new(0.0, 0.0),
+            local_normal: Vector2::zero(),
+            local_point: Vector2::zero(),
             manifold_type: ManifoldType::FaceA,
+        }
+    }
+}
+
+/// This is used to compute the current state of a contact manifold.
+pub struct WorldManifold {
+    /// World vector pointing from A to B.
+    pub normal: Vector2<f32>,
+    /// World contact point. (point of intersection)
+    pub points: Vec<Vector2<f32>>,
+    /// A negative value indicates overlap, in meters.
+    separations: Vec<f32>,
+}
+
+impl Default for WorldManifold {
+    fn default() -> WorldManifold {
+        WorldManifold {
+            normal: Vector2::zero(),
+            points: Vec::with_capacity(2),
+            separations: Vec::with_capacity(2),
+        }
+    }
+}
+
+impl WorldManifold {
+    /// Evaluate the manifold with supplied transforms. This assumes modest motion from the
+    /// original state. The radii must come from the shapes that generated the manifold.
+    pub fn initialize(&mut self, manifold: &Manifold,
+           transform_a: &Transform2d, radius_a: f32,
+           transform_b: &Transform2d, radius_b: f32) {
+        if manifold.points.len() == 0 {
+            return;
+        }
+
+        self.points.clear();
+
+        match manifold.manifold_type {
+            ManifoldType::FaceA => {
+                self.normal = transform_a.rotation.apply(&manifold.local_normal);
+                let plane_point = transform_a.apply(&manifold.local_normal);
+
+                for mp in &manifold.points {
+                    let clip_point = transform_b.apply(&mp.local_point);
+                    let c_a = clip_point + self.normal * (radius_a - dot(clip_point - plane_point, self.normal));
+                    let c_b = clip_point - self.normal * radius_b;
+                    self.points.push((c_a + c_b) * 0.5);
+                    self.separations.push(dot(c_b - c_a, self.normal));
+                }
+            }
+            ManifoldType::FaceB => {
+                self.normal = transform_b.rotation.apply(&manifold.local_normal);
+                let plane_point = transform_b.apply(&manifold.local_normal);
+
+                for mp in &manifold.points {
+                    let clip_point = transform_a.apply(&mp.local_point);
+                    let c_b = clip_point + self.normal * (radius_b - dot(clip_point - plane_point, self.normal));
+                    let c_a = clip_point - self.normal * radius_a;
+                    self.points.push((c_a + c_b) * 0.5);
+                    self.separations.push(dot(c_a - c_b, self.normal));
+                }
+
+                // Ensure normal points from A to B.
+                self.normal = -self.normal;
+            }
         }
     }
 }
@@ -100,7 +169,7 @@ pub struct ClipVertex {
 impl ClipVertex {
     pub fn new() -> Self {
         ClipVertex {
-            v: Vector2::<f32>::new(0.0, 0.0),
+            v: Vector2::zero(),
             id: ContactId::new(),
         }
     }
@@ -162,8 +231,8 @@ impl Aabb {
     /// Constructs a new Aabb.
     pub fn new() -> Self {
         Aabb {
-            min: Vector2::<f32>::new(0.0, 0.0),
-            max: Vector2::<f32>::new(0.0, 0.0),
+            min: Vector2::zero(),
+            max: Vector2::zero(),
         }
     }
 
@@ -181,8 +250,8 @@ impl Aabb {
         let max_x = f32::max(aabb1.max.x, aabb2.max.x);
         let max_y = f32::max(aabb1.max.y, aabb2.max.y);
         Aabb {
-            min: Vector2::<f32>::new(min_x, min_y),
-            max: Vector2::<f32>::new(max_x, max_y),
+            min: Vector2::new(min_x, min_y),
+            max: Vector2::new(max_x, max_y),
         }
     }
 
