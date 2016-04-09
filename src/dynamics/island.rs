@@ -137,8 +137,8 @@ pub struct Velocity {
 }
 
 pub struct Island<'a> {
-    bodies: Vec<BodyHandleWeak<'a>>,
-    contacts: Vec<ContactHandleWeak<'a>>,
+    pub bodies: Vec<BodyHandleWeak<'a>>,
+    pub contacts: Vec<ContactHandleWeak<'a>>,
 
     positions: Vec<Position>,
     velocities: Vec<Velocity>,

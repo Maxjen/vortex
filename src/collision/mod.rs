@@ -3,7 +3,8 @@ pub use self::broad_phase::{BroadPhase, BroadPhaseCallback};
 pub use self::shape::Shape;
 pub use self::polygon_shape::PolygonShape;
 pub use self::collide_polygons::collide_polygons;
-pub use self::distance::{DistanceProxy, SimplexCache};
+pub use self::distance::{DistanceProxy, SimplexCache, distance};
+pub use self::time_of_impact::{ToiState, time_of_impact};
 
 use cgmath::*;
 use ::common::{Transform2d};

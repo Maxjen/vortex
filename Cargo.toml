@@ -5,6 +5,7 @@ authors = ["Max Jensen <maxjen@gmail.com>"]
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+bitflags = "0.3"
 time = "0.1"
 cgmath = "*"
 glium = "*"

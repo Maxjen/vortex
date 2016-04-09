@@ -661,7 +661,6 @@ impl ContactSolver {
             }*/
 
             for (vcp, mp) in vc.points.iter().zip(manifold.points.iter_mut()) {
-                // TODO: vc.points.len == 1 && manifold.points.len() == 2
                 mp.normal_impulse = vcp.normal_impulse;
                 mp.tangent_impulse = vcp.tangent_impulse;
             }

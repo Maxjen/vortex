@@ -2,6 +2,7 @@
 name = "vortex"
 version = "0.1.0"
 dependencies = [
+ "bitflags 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "cgmath 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glium 0.13.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "inferno 0.1.0 (git+https://github.com/Maxjen/inferno)",

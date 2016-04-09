@@ -6,7 +6,7 @@ use ::common::Transform2d;
 
 /// A distance proxy is used by the GJK algorithm. It encapsulates any shape.
 pub struct DistanceProxy {
-    buffer: Vec<Vector2<f32>>,
+    //buffer: Vec<Vector2<f32>>,
     pub vertices: Vec<Vector2<f32>>,
     pub radius: f32,
 }
@@ -19,7 +19,7 @@ impl DistanceProxy {
         match shape {
             &Shape::Polygon(ref polygon) => {
                 DistanceProxy {
-                    buffer: Vec::with_capacity(2),
+                    //buffer: Vec::with_capacity(2),
                     vertices: polygon.vertices.clone(),
                     radius: shape.get_radius(),
                 }
@@ -62,12 +62,20 @@ impl DistanceProxy {
 
 // TODO: maybe change usize to u8 like in Box2D
 /// Used to warm start `distance`.
-/// Set count to zero on first call.
 pub struct SimplexCache {
     /// Length or area.
     metric: f32,
     /// Vertices on shape A and shape B.
-    indices: Vec<(usize, usize)>,
+    pub indices: Vec<(usize, usize)>,
+}
+
+impl SimplexCache {
+    pub fn new() -> SimplexCache {
+        SimplexCache {
+            metric: 0.0,
+            indices: Vec::with_capacity(3),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -165,7 +173,7 @@ impl Simplex {
         match self.vertices.len() {
             1 => self.vertices[0].w,
             2 => self.vertices[0].w * self.vertices[0].a + self.vertices[1].w * self.vertices[1].a,
-            3 => Vector2::zero(),
+            //3 => Vector2::zero(),
             _ => unreachable!("Invalid number of simplex vertices!"),
         }
     }
@@ -360,21 +368,20 @@ impl Simplex {
 /// Output of `distance`
 pub struct DistanceOutput {
     /// Closest point on shape A.
-    point_a: Vector2<f32>,
+    pub point_a: Vector2<f32>,
     /// Closest point on shape B.
-    point_b: Vector2<f32>,
-    distance: f32,
+    pub point_b: Vector2<f32>,
+    pub distance: f32,
     /// Number of GJK iterations used.
-    iterations: u32,
+    pub iterations: u32,
 }
 
 /// Compute the closest points between two shapes. Supports any combination of:
 /// CircleShape, PolygonShape, EdgeShape.
-/// On the first call set cache.count to zero.
-pub fn distance(cache: &mut SimplexCache, proxy_a: DistanceProxy, proxy_b: DistanceProxy,
-                transform_a: Transform2d, transform_b: Transform2d, use_radii: bool) -> DistanceOutput {
+pub fn distance(cache: &mut SimplexCache, proxy_a: &DistanceProxy, proxy_b: &DistanceProxy,
+                transform_a: &Transform2d, transform_b: &Transform2d, use_radii: bool) -> DistanceOutput {
     // Initialize the simplex with the cache.
-    let mut simplex = Simplex::new(cache, &proxy_a, &proxy_b, &transform_a, &transform_b);
+    let mut simplex = Simplex::new(cache, proxy_a, proxy_b, transform_a, transform_b);
 
     // These store the vertices of the last simplex so that we
     // can check for duplicates and prevent cycling.
@@ -387,20 +394,15 @@ pub fn distance(cache: &mut SimplexCache, proxy_a: DistanceProxy, proxy_b: Dista
     let mut iterations = 0;
     for _ in 0..common::MAX_TOI_ITERATIONS {
         // Copy simplex so we can identify duplicates.
+        save.clear();
         for v in &simplex.vertices {
             save.push((v.index_a, v.index_b));
         }
 
         match simplex.vertices.len() {
-            1 => break,
-            2 => {
-                simplex.solve2();
-                break;
-            }
-            3 => {
-                simplex.solve3();
-                break;
-            }
+            1 => {}
+            2 => simplex.solve2(),
+            3 => simplex.solve3(),
             _ => unreachable!("Invalid number of simplex vertices!"),
         }
 

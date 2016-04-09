@@ -16,6 +16,9 @@ pub mod debug_draw;
 
 // Collision
 
+/// The maximum number of vertices on a convex polygon.
+pub const MAX_POLYGON_VERTICES: usize = 8;
+
 /// This is used to fatten Aabbs in the dynamic tree. This allows proxies to move by a small
 /// amount without triggering a tree adjustment. This is in meters
 pub const AABB_EXTENSION: f32 = 0.1;
@@ -225,6 +228,7 @@ impl Transform2d {
 /// This describes the motion of a body/shape for TOI computation. Shapes are defined
 /// with respect to the body origin, which may not coincide with the center of mass.
 /// However, to support dynamics we must interpolate the center of mass position.
+#[derive(Clone, Copy)]
 pub struct Sweep {
     /// Local center of mass position
     pub local_center: Vector2<f32>,

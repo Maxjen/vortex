@@ -41,8 +41,8 @@ pub enum ContactType {
 pub struct Contact<'a> {
     contact_type: ContactType,
 
-    edge_a: ContactEdge<'a>,
-    edge_b: ContactEdge<'a>,
+    pub edge_a: ContactEdge<'a>,
+    pub edge_b: ContactEdge<'a>,
 
     pub fixture_a: FixtureHandle<'a>,
     pub fixture_b: FixtureHandle<'a>,
@@ -111,7 +111,7 @@ impl<'a> Contact<'a> {
         result
     }
 
-    pub fn update(&mut self, world: &World) {
+    pub fn update(&mut self) {
         let old_manifold = self.manifold.clone();
 
         let body_a = try_some!(self.fixture_a.borrow().body.upgrade());

@@ -2,6 +2,7 @@ extern crate cgmath;
 extern crate glium;
 extern crate vortex;
 extern crate inferno;
+extern crate time;
 
 use inferno::rendering::{ColorVertex2d, DrawBatch};
 use cgmath::*;
@@ -35,7 +36,7 @@ impl<'a> DebugDraw for MyDebugDraw<'a> {
             let mut vertex_buffer = Vec::new();
             for v in vertices {
                 vertex_buffer.push(ColorVertex2d {
-                    position: [v.x, v.y],
+                    position: [v.x * 100.0, v.y * 100.0],
                     color: [255, 255, 255, 50],
                 });
             }
@@ -51,7 +52,7 @@ impl<'a> DebugDraw for MyDebugDraw<'a> {
             vertex_buffer.clear();
             for v in vertices {
                 vertex_buffer.push(ColorVertex2d {
-                    position: [v.x, v.y],
+                    position: [v.x * 100.0, v.y * 100.0],
                     color: [255, 255, 255, 100],
                 });
             }
@@ -80,50 +81,64 @@ fn main() {
     world.borrow_mut().set_debug_draw(Some(debug_draw.clone()));
 
     let mut vertices = Vec::<Vector2<f32>>::new();
-    vertices.push(Vector2::new(650.0, -50.0));
-    vertices.push(Vector2::new(650.0, -100.0));
-    vertices.push(Vector2::new(700.0, -100.0));
-    vertices.push(Vector2::new(750.0, -50.0));
+    vertices.push(Vector2::new(6.5, -0.5));
+    vertices.push(Vector2::new(6.5, -1.0));
+    vertices.push(Vector2::new(7.0, -1.0));
+    vertices.push(Vector2::new(7.5, -0.5));
     let mut shape = PolygonShape::new();
     shape.set(&vertices);
     let body = world.borrow_mut().create_body();
     body.borrow_mut().create_fixture(Shape::Polygon(shape));
 
     let mut shape2 = PolygonShape::new();
-    shape2.set_as_box(50.0, 50.0);
+    shape2.set_as_box(0.5, 0.5);
     let body2 = world.borrow_mut().create_body();
     body2.borrow_mut().create_fixture(Shape::Polygon(shape2));
-    body2.borrow_mut().set_transform(&Vector2::<f32>::new(500.0, -300.0), 0.8);
-
-    world.borrow_mut().test();
+    body2.borrow_mut().set_transform(&Vector2::<f32>::new(5.0, -3.0), 0.8);
 
     world.borrow().broad_phase.print();
 
+    let ticks_per_second = 60;
+    let skip_ticks = 1000000000 / ticks_per_second;
+    let max_frame_skip = 10;
+
+    let mut next_tick = time::precise_time_ns() - 1;
+    let mut loops;
+
     loop {
-        use glium::glutin::Event;
-
-        let mut target = display.draw();
-
-        target.clear_color_and_depth((0.01, 0.01, 0.01, 1.0), 1.0);
-
-        /*batch.draw(&mut target);
-        window.create_buffers();
-        window.draw(&mut target);
-        text.add_to_batch(&mut overlay_batch);
-        overlay_batch.create_buffers();
-        overlay_batch.draw(&mut target);
-        overlay_batch.clear();*/
-
-        world.borrow().draw_debug_data();
-        debug_draw.borrow_mut().draw_all(&mut target);
-
-        target.finish().unwrap();
-
-        for ev in display.poll_events() {
-            match ev {
-                Event::Closed => return,
-                _ => ()
+        loops = 0;
+        while time::precise_time_ns() > next_tick && loops < max_frame_skip {
+            use glium::glutin::Event;
+            for ev in display.poll_events() {
+                match ev {
+                    Event::Closed => return,
+                    _ => ()
+                }
             }
+
+            world.borrow_mut().step(1.0 / ticks_per_second as f32, 8, 3);
+
+            next_tick += skip_ticks;
+            loops += 1;
+        }
+
+        if loops != 0 {
+            let mut target = display.draw();
+
+            target.clear_color_and_depth((0.01, 0.01, 0.01, 1.0), 1.0);
+
+            /*batch.draw(&mut target);
+            window.create_buffers();
+            window.draw(&mut target);
+            text.add_to_batch(&mut overlay_batch);
+            overlay_batch.create_buffers();
+            overlay_batch.draw(&mut target);
+            overlay_batch.clear();*/
+
+            world.borrow().draw_debug_data();
+            debug_draw.borrow_mut().draw_all(&mut target);
+
+            target.finish().unwrap();
         }
     }
 }
