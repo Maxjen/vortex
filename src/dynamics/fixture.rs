@@ -3,28 +3,48 @@ use std::cell::RefCell;
 use ::collision::{BroadPhase, Shape, PolygonShape, Aabb};
 use ::common::Transform2d;
 use super::BodyHandleWeak;
+use cgmath::*;
 
 pub type FixtureHandle<'a> = Rc<RefCell<Fixture<'a>>>;
+
+pub struct FixtureConfig {
+    pub friction: f32,
+    pub restitution: f32,
+    pub density: f32,
+    pub is_sensor: bool,
+}
+
+impl Default for FixtureConfig {
+    fn default() -> FixtureConfig {
+        FixtureConfig {
+            friction: 0.2,
+            restitution: 0.0,
+            density: 0.0,
+            is_sensor: false,
+        }
+    }
+}
 
 pub struct Fixture<'a> {
     pub body: BodyHandleWeak<'a>,
     pub shape: Shape,
     pub friction: f32,
     pub restitution: f32,
-    //density: f32,
-    pub proxy_id: Option<u32>,
+    pub density: f32,
     pub is_sensor: bool,
+    pub proxy_id: Option<u32>,
 }
 
 impl<'a> Fixture<'a> {
-    pub fn new(body: BodyHandleWeak<'a>, shape: Shape) -> Self {
+    pub fn new(body: BodyHandleWeak<'a>, shape: Shape, fixture_config: &FixtureConfig) -> Self {
         Fixture {
             body: body,
             shape: shape,
-            friction: 0.2,
-            restitution: 0.0,
+            friction: fixture_config.friction,
+            restitution: fixture_config.restitution,
+            density: fixture_config.density,
+            is_sensor: fixture_config.is_sensor,
             proxy_id: None,
-            is_sensor: false,
         }
     }
 
@@ -56,6 +76,10 @@ impl<'a> Fixture<'a> {
 
             broad_phase.move_proxy(proxy_id, &proxy_aabb, displacement);
         }
+    }
+
+    pub fn get_mass_data(&self) -> (f32, Vector2<f32>, f32) {
+        self.shape.compute_mass(self.density)
     }
 
     /*pub fn get_shape(&self) -> &PolygonShape {

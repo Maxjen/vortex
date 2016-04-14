@@ -13,11 +13,11 @@ fn find_max_separation(poly1: &PolygonShape, transform1: &Transform2d, poly2: &P
     let mut best_index = 0;
     let mut max_separation = f32::MIN;
     for i in 0..count1 {
-        // Get poly1 normal in frame2
+        // Get poly1 normal in frame2.
         let n = transform.rotation.apply(&poly1.normals[i]);
         let v1 = transform.apply(&poly1.vertices[i]);
 
-        // Find deepest point for normal i
+        // Find deepest point for normal i.
         let mut si = f32::MAX;
         for j in 0..count2 {
             let sij = n.dot(poly2.vertices[j] - v1);
@@ -88,7 +88,7 @@ fn find_incident_edge(poly1: &PolygonShape, transform1: &Transform2d, edge1: usi
 // collide_polygons
 // clip
 
-// The normal points from `polyA` to `polyB`
+// The normal points from `poly_a` to `poly_b`.
 pub fn collide_polygons(poly_a: &PolygonShape, transform_a: &Transform2d,
                         poly_b: &PolygonShape, transform_b: &Transform2d) -> Manifold {
     let mut manifold = Manifold::new();
@@ -110,7 +110,7 @@ pub fn collide_polygons(poly_a: &PolygonShape, transform_a: &Transform2d,
     let flip;
     let k_tol = 0.1 * common::LINEAR_SLOP;
 
-    if separation_b > separation_a {
+    if separation_b > separation_a + k_tol {
         manifold.manifold_type = ManifoldType::FaceB;
         poly1 = poly_b;
         poly2 = poly_a;

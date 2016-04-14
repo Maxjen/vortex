@@ -87,7 +87,7 @@ pub fn clamp_f32(s: f32, low: f32, high: f32) -> f32 {
     f32::max(low, f32::min(s, high))
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Rotation2d {
     sin: f32,
     cos: f32,
@@ -162,7 +162,7 @@ impl Rotation2d {
         // [ qc qs] * [x] = [qc*x + qs*y]
     	// [-qs qc]   [y]   [qs*x + qc*y]
         Vector2::<f32> {
-            x: self.cos * v.x + self.sin + v.y,
+            x: self.cos * v.x + self.sin * v.y,
             y: -self.sin * v.x + self.cos * v.y,
         }
     }
@@ -170,7 +170,7 @@ impl Rotation2d {
 
 /// A transform contains translation and rotation. It is used to represent the position
 /// and orientation of rigid frames.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Transform2d {
     pub position: Vector2<f32>,
     pub rotation: Rotation2d,

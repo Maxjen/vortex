@@ -5,7 +5,7 @@ use std::mem;
 use std::ptr;
 use std::f32;
 use cgmath::*;
-use super::{BodyType, Body, BodyHandle, Fixture, FixtureHandle, ContactManager, Island};
+use super::{BodyType, BodyConfig, Body, BodyHandle, Fixture, FixtureHandle, ContactManager, Island};
 use ::collision;
 use ::collision::{BroadPhase, Shape, DistanceProxy, ToiState};
 use ::common;
@@ -40,9 +40,19 @@ pub struct TimeStep {
     pub warm_starting: bool,
 }
 
+bitflags! {
+    flags Flags: u32 {
+        const FLAG_NEW_FIXTURES = 0b00000001,
+        const FLAG_LOCKED       = 0b00000010, // TODO: use somewhere
+        const FLAG_CLEAR_FORCES = 0b00000100,
+    }
+}
+
 pub struct World<'a> {
     pub broad_phase: BroadPhase<'a>,
     pub contact_manager: ContactManager<'a>,
+
+    flags: Flags,
 
     gravity: Vector2<f32>,
     allow_sleep: bool,
@@ -72,7 +82,8 @@ impl<'a> World<'a> {
         unsafe {
             result = Rc::new(RefCell::new(World {
                 broad_phase: BroadPhase::new(),
-                contact_manager: mem::uninitialized(),
+                contact_manager: ContactManager::new(),
+                flags: FLAG_CLEAR_FORCES,
                 gravity: gravity,
                 allow_sleep: true,
                 bodies: HashMap::new(),
@@ -82,24 +93,22 @@ impl<'a> World<'a> {
                 inv_dt0: 0.0,
                 warm_starting: true,
                 sub_stepping: false,
-                continuous_physics: true,
+                continuous_physics: false,
                 step_complete: true,
                 profile: Default::default(),
             }));
             let self_handle = Rc::downgrade(&result);
-            let contact_manager = ContactManager::new(self_handle.clone());
-            ptr::write(&mut result.borrow_mut().contact_manager, contact_manager);
             ptr::write(&mut result.borrow_mut().self_handle, self_handle);
             //result.borrow_mut().self_handle = Some(self_handle);
         }
         result
     }
 
-    pub fn create_body(&mut self) -> BodyHandle<'a> {
+    pub fn create_body(&mut self, body_config: &BodyConfig) -> BodyHandle<'a> {
         let index = self.body_index_pool.get_index();
         let world = self.self_handle.clone();
         //let result = Rc::new(RefCell::new(Body::new(index, world)));
-        let result = Body::new(index, world);
+        let result = Body::new(index, world, body_config);
         self.bodies.insert(index, result.clone());
         result
     }
@@ -140,6 +149,16 @@ impl<'a> World<'a> {
                             vertices.push(transform.apply(v));
                         }
                         debug_draw.borrow_mut().draw_polygon(&vertices);
+
+                        let aabb = self.broad_phase.get_fat_aabb(f.proxy_id.unwrap());
+                        let v1 = aabb.min;
+                        let v2 = vec2(aabb.max.x, aabb.min.y);
+                        let v3 = aabb.max;
+                        let v4 = vec2(aabb.min.x, aabb.max.y);
+                        debug_draw.borrow_mut().draw_segment(&v1, &v2);
+                        debug_draw.borrow_mut().draw_segment(&v2, &v3);
+                        debug_draw.borrow_mut().draw_segment(&v3, &v4);
+                        debug_draw.borrow_mut().draw_segment(&v4, &v1);
                     }
                 }
             }
@@ -157,7 +176,7 @@ impl<'a> World<'a> {
 
         // Clear all the island flags.
         for (_, b) in &self.bodies {
-            b.borrow_mut().is_island = false;
+            b.borrow_mut().set_island(false);
         }
         for c in &self.contact_manager.contacts {
             c.borrow_mut().is_island = false;
@@ -166,7 +185,7 @@ impl<'a> World<'a> {
         // Build and simulate all awake islands.
         let mut stack: Vec<BodyHandle> = Vec::with_capacity(self.bodies.len());
         for (_, seed) in &self.bodies {
-            if seed.borrow().is_island {
+            if seed.borrow().is_island() {
                 continue;
             }
 
@@ -183,7 +202,7 @@ impl<'a> World<'a> {
             island.clear();
             stack.clear();
             stack.push(seed.clone());
-            seed.borrow_mut().is_island = true;
+            seed.borrow_mut().set_island(true);
 
             // Perform a depth first search (DFS) on the constraint graph.
             while stack.len() > 0 {
@@ -230,11 +249,11 @@ impl<'a> World<'a> {
                     let other = ce.body.upgrade().unwrap();
 
                     // Was the other body already added to this island?
-                    if other.borrow().is_island {
+                    if other.borrow().is_island() {
                         continue;
                     }
 
-                    other.borrow_mut().is_island = true;
+                    other.borrow_mut().set_island(true);
                     stack.push(other);
                 }
             }
@@ -248,8 +267,13 @@ impl<'a> World<'a> {
             // Post solve cleanup.
             for (_, b) in &self.bodies {
                 // Allow static bodies to participate in other islands.
-                if let BodyType::Static = b.borrow().body_type {
-                    b.borrow_mut().is_island = false;
+                let is_static = if let BodyType::Static = b.borrow().body_type {
+                    true
+                } else {
+                    false
+                };
+                if is_static {
+                    b.borrow_mut().set_island(false);
                 }
             }
         }
@@ -258,7 +282,7 @@ impl<'a> World<'a> {
         // Synchronize fixtures, check for out of range bodies.
         for (_, b) in &self.bodies {
             // If a body was not in an island then it did not move.
-            if !b.borrow().is_island {
+            if !b.borrow().is_island() {
                 continue;
             }
 
@@ -281,7 +305,7 @@ impl<'a> World<'a> {
 
         if self.step_complete {
             for (_, b) in &self.bodies {
-                b.borrow_mut().is_island = false;
+                b.borrow_mut().set_island(false);
                 b.borrow_mut().sweep.alpha0 = 0.0;
             }
 
@@ -312,14 +336,15 @@ impl<'a> World<'a> {
                 }
 
                 let mut alpha = 1.0;
-                if c.borrow().is_toi {
+                let is_toi = c.borrow().is_toi;
+                if is_toi {
                     // This contact has a valid cached TOI.
                     alpha = c.borrow().toi;
                 } else {
                     //let f_a = c.borrow().fixture_a.clone();
                     //let f_b = c.borrow().fixture_b.clone();
-                    let f_a = &c.borrow().fixture_a;
-                    let f_b = &c.borrow().fixture_b;
+                    let f_a = c.borrow().fixture_a.clone();
+                    let f_b = c.borrow().fixture_b.clone();
 
                     // Is there a sensor?
                     if f_a.borrow().is_sensor || f_b.borrow().is_sensor {
@@ -337,8 +362,18 @@ impl<'a> World<'a> {
                         continue;
                     }
 
-                    let collide_a = b_a.borrow().is_bullet;
-                    let collide_b = b_b.borrow().is_bullet;
+                    let dynamic_a = if let BodyType::Dynamic = b_a.borrow().body_type {
+                        true
+                    } else {
+                        false
+                    };
+                    let dynamic_b = if let BodyType::Dynamic = b_b.borrow().body_type {
+                        true
+                    } else {
+                        false
+                    };
+                    let collide_a = b_a.borrow().is_bullet() || !dynamic_a;
+                    let collide_b = b_b.borrow().is_bullet() || !dynamic_b;
 
                     // Are these two non-bullet dynamic bodies?
                     if !collide_a && !collide_b {
@@ -394,8 +429,8 @@ impl<'a> World<'a> {
             let min_contact = min_contact.unwrap();
 
             // Advance the bodies to the TOI.
-            let f_a = &min_contact.borrow().fixture_a;
-            let f_b = &min_contact.borrow().fixture_b;
+            let f_a = min_contact.borrow().fixture_a.clone();
+            let f_b = min_contact.borrow().fixture_b.clone();
             let b_a = f_a.borrow().body.upgrade().unwrap();
             let b_b = f_b.borrow().body.upgrade().unwrap();
 
@@ -430,8 +465,8 @@ impl<'a> World<'a> {
             island.add_body(Rc::downgrade(&b_b));
             island.add_contact(Rc::downgrade(&min_contact));
 
-            b_a.borrow_mut().is_island = true;
-            b_b.borrow_mut().is_island = true;
+            b_a.borrow_mut().set_island(true);
+            b_b.borrow_mut().set_island(true);
             min_contact.borrow_mut().is_island = true;
 
             // Get contacts on body A and body B.
@@ -461,7 +496,7 @@ impl<'a> World<'a> {
                         } else {
                             false
                         };
-                        if other_dynamic && !b.borrow().is_bullet && !other.borrow().is_bullet {
+                        if other_dynamic && !b.borrow().is_bullet() && !other.borrow().is_bullet() {
                             continue;
                         }
 
@@ -477,7 +512,7 @@ impl<'a> World<'a> {
 
                         // Tentatively advance the body to the TOI.
                         let backup = other.borrow().sweep;
-                        if !other.borrow().is_island {
+                        if !other.borrow().is_island() {
                             other.borrow_mut().advance(min_alpha);
                         }
 
@@ -503,12 +538,12 @@ impl<'a> World<'a> {
                         island.add_contact(Rc::downgrade(&contact));
 
                         // Has the other body already been added to the island?
-                        if other.borrow().is_island {
+                        if other.borrow().is_island() {
                             continue;
                         }
 
                         // Add the other body to the island.
-                        other.borrow_mut().is_island = true;
+                        other.borrow_mut().set_island(true);
 
                         // TODO: dynamic check
                         other.borrow_mut().set_awake(true);
@@ -536,12 +571,14 @@ impl<'a> World<'a> {
                 position_iterations: 20,
                 warm_starting: false,
             };
-            island.solve_toi(&sub_step, b_a.borrow().island_index, b_b.borrow().island_index);
+            let island_index_a = b_a.borrow().island_index;
+            let island_index_b = b_b.borrow().island_index;
+            island.solve_toi(&sub_step, island_index_a, island_index_b);
 
             // Reset island flags and synchronize broad phase proxies.
             for body in &island.bodies {
                 let body = body.upgrade().unwrap();
-                body.borrow_mut().is_island = false;
+                body.borrow_mut().set_island(false);
 
                 let dynamic = if let BodyType::Dynamic = body.borrow().body_type {
                     true
@@ -573,8 +610,15 @@ impl<'a> World<'a> {
         }
     }
 
+    /// Take a time step. This performs collision detection, integration, and constraint solution.
     pub fn step(&mut self, dt: f32, velocity_iterations: u32, position_iterations: u32) {
         let step_timer = Timer::new();
+
+        // If new fixtures were added, we need to find the new contacts.
+        if self.flags.contains(FLAG_NEW_FIXTURES) {
+            self.broad_phase.update_pairs(&mut self.contact_manager);
+            self.flags.remove(FLAG_NEW_FIXTURES);
+        }
 
         let inv_dt = if dt > 0.0 {
             1.0 / dt
@@ -594,7 +638,7 @@ impl<'a> World<'a> {
         // Update contacts. This is where some contacts are destroyed.
         {
             let timer = Timer::new();
-            self.contact_manager.collide();
+            self.contact_manager.collide(&self.broad_phase);
             self.profile.collide = timer.get_milliseconds();
         }
 
@@ -616,6 +660,44 @@ impl<'a> World<'a> {
             self.inv_dt0 = step.inv_dt;
         }
 
+        if self.flags.contains(FLAG_CLEAR_FORCES) {
+            self.clear_forces();
+        }
+
         self.profile.step = step_timer.get_milliseconds();
+    }
+
+    pub fn set_new_fixtures(&mut self, new_fixtures: bool) {
+        if new_fixtures {
+            self.flags.insert(FLAG_NEW_FIXTURES);
+        } else {
+            self.flags.remove(FLAG_NEW_FIXTURES);
+        }
+    }
+
+    /// Set the flag to control automatic clearing of forces after each time step.
+    pub fn set_auto_clear_forces(&mut self, auto_clear_forces: bool) {
+        if auto_clear_forces {
+            self.flags.insert(FLAG_CLEAR_FORCES);
+        } else {
+            self.flags.remove(FLAG_CLEAR_FORCES);
+        }
+    }
+
+    pub fn get_auto_clear_forces(&self) -> bool {
+        self.flags.contains(FLAG_CLEAR_FORCES)
+    }
+
+    /// Manually clear the force buffer on all bodies. By default, forces are cleared automatically
+    /// after each call to `step`. The default is modified by calling `set_auto_clear_forces`.
+    /// The purpose of this function is to support sub-stepping. Sub-stepping is often used to
+    /// maintain a fixed sized time step under a variable frame-rate.
+    /// When you perform sub-stepping you will disable auto clearing of forces and instead call
+    /// clear_forces after all sub-steps are complete in one pass of your game loop.
+    pub fn clear_forces(&self) {
+        for (_, body) in &self.bodies {
+            body.borrow_mut().force = Vector2::zero();
+            body.borrow_mut().torque = 0.0;
+        }
     }
 }

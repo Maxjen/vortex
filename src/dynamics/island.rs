@@ -1,4 +1,4 @@
-use super::{BodyHandleWeak, ContactHandleWeak, ContactSolver};
+use super::{BodyHandleWeak, BodyType, ContactHandleWeak, ContactSolver};
 use super::world::{Profile, TimeStep};
 use ::common;
 use ::common::Timer;
@@ -185,20 +185,21 @@ impl<'a> Island<'a> {
             b.borrow_mut().sweep.c0 = c;
             b.borrow_mut().sweep.a0 = a;
 
-            // TODO: only for dynamic bodies
-            // Integrate velocities.
-            v = v + (gravity * b.borrow().gravity_scale + b.borrow().force * b.borrow().inv_mass) * dt;
-            w += dt * b.borrow().inv_inertia * b.borrow().torque;
+            if let BodyType::Dynamic = b.borrow().body_type {
+                // Integrate velocities.
+                v = v + (gravity * b.borrow().gravity_scale + b.borrow().force * b.borrow().inv_mass) * dt;
+                w += dt * b.borrow().inv_inertia * b.borrow().torque;
 
-            // Apply damping.
-            // ODE: dv/dt + c * v = 0
-            // Solution: v(t) = v0 * exp(-c * t)
-            // Time step: v(t + dt) = v0 * exp(-c * (t + dt)) = v0 * exp(-c * t) * exp(-c * dt) = v * exp(-c * dt)
-            // v2 = exp(-c * dt) * v1
-            // Pade approximation:
-            // v2 = v1 * 1 / (1 + c * dt)
-            v = v * 1.0 / (1.0 + dt * b.borrow().linear_damping);
-            w *= 1.0 / (1.0 + dt * b.borrow().angular_damping);
+                // Apply damping.
+                // ODE: dv/dt + c * v = 0
+                // Solution: v(t) = v0 * exp(-c * t)
+                // Time step: v(t + dt) = v0 * exp(-c * (t + dt)) = v0 * exp(-c * t) * exp(-c * dt) = v * exp(-c * dt)
+                // v2 = exp(-c * dt) * v1
+                // Pade approximation:
+                // v2 = v1 * 1 / (1 + c * dt)
+                v = v * 1.0 / (1.0 + dt * b.borrow().linear_damping);
+                w *= 1.0 / (1.0 + dt * b.borrow().angular_damping);
+            }
 
             self.positions.push(Position {
                 c: c,

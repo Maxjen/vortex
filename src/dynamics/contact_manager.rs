@@ -1,5 +1,5 @@
 use ::collision::{BroadPhase, BroadPhaseCallback};
-use super::{WorldHandleWeak, ContactHandle, Contact, BodyType, Body, Fixture, FixtureHandle};
+use super::{ContactHandle, Contact, BodyType, Body, Fixture, FixtureHandle};
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -9,7 +9,6 @@ macro_rules! try_some {
 
 pub struct ContactManager<'a> {
     pub contacts: Vec<ContactHandle<'a>>,
-    world: WorldHandleWeak<'a>,
 }
 
 impl<'a> BroadPhaseCallback<'a> for ContactManager<'a> {
@@ -57,9 +56,8 @@ impl<'a> BroadPhaseCallback<'a> for ContactManager<'a> {
 }
 
 impl<'a> ContactManager<'a> {
-    pub fn new(world: WorldHandleWeak<'a>) -> ContactManager<'a> {
+    pub fn new() -> ContactManager<'a> {
         ContactManager {
-            world: world,
             contacts: Vec::new(),
         }
     }
@@ -78,8 +76,8 @@ impl<'a> ContactManager<'a> {
         let body_b = fixture_b.borrow().body.upgrade().unwrap();
 
         // Remove from body A and body B.
-        body_a.borrow_mut().remove_contact_edge(contact.borrow().edge_a.clone());
-        body_b.borrow_mut().remove_contact_edge(contact.borrow().edge_b.clone());
+        body_a.borrow_mut().remove_contact_edge(contact.borrow().edge_to_b.clone());
+        body_b.borrow_mut().remove_contact_edge(contact.borrow().edge_to_a.clone());
     }
 
     pub fn delete_contact(&mut self, contact: ContactHandle<'a>) {
@@ -102,7 +100,7 @@ impl<'a> ContactManager<'a> {
 
     /// This is the top level collision call for the time step. Here all the narrow phase
     /// collison is processed for the world contact list.
-    pub fn collide(&mut self) {
+    pub fn collide(&mut self, broad_phase: &BroadPhase) {
         let mut to_remove = Vec::new();
         // Update awake contacts.
         for (i, contact) in self.contacts.iter_mut().enumerate() {
@@ -132,8 +130,6 @@ impl<'a> ContactManager<'a> {
                 }
             }
 
-            let world = try_some!(self.world.upgrade());
-            let broad_phase = &world.borrow().broad_phase;
             let overlap;
             {
                 let contact = contact.borrow();
@@ -152,6 +148,7 @@ impl<'a> ContactManager<'a> {
             contact.borrow_mut().update();
         }
 
+        to_remove.sort_by(|a, b| b.cmp(a));
         for i in &to_remove {
             self.delete_contact_with_index(*i);
         }

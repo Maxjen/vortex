@@ -7,8 +7,8 @@ extern crate time;
 use inferno::rendering::{ColorVertex2d, DrawBatch};
 use cgmath::*;
 use vortex::collision::{Shape, PolygonShape};
-use vortex::common::{DebugDraw};
-use vortex::dynamics::World;
+use vortex::common::{DebugDraw, Transform2d, Rotation2d};
+use vortex::dynamics::{BodyType, BodyConfig, FixtureConfig, World};
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -66,6 +66,22 @@ impl<'a> DebugDraw for MyDebugDraw<'a> {
             self.draw_batch.add_color_2d_lines(&vertex_buffer, &index_buffer);
         }
     }
+
+    fn draw_segment(&mut self, v1: &Vector2<f32>, v2: &Vector2<f32>) {
+        let mut vertex_buffer = Vec::new();
+        vertex_buffer.push(ColorVertex2d {
+            position: [v1.x * 100.0, v1.y * 100.0],
+            color: [255, 255, 255, 50],
+        });
+        vertex_buffer.push(ColorVertex2d {
+            position: [v2.x * 100.0, v2.y * 100.0],
+            color: [255, 255, 255, 50],
+        });
+
+        let mut index_buffer = vec![0, 1];
+
+        self.draw_batch.add_color_2d_lines(&vertex_buffer, &index_buffer);
+    }
 }
 
 fn main() {
@@ -80,21 +96,38 @@ fn main() {
     let debug_draw = Rc::new(RefCell::new(MyDebugDraw::new(&display)));
     world.borrow_mut().set_debug_draw(Some(debug_draw.clone()));
 
+    let body1_config = BodyConfig {
+        body_type: BodyType::Dynamic,
+        position: Vector2::new(6.1, -0.5),
+        .. BodyConfig::default()
+    };
+    let body1 = world.borrow_mut().create_body(&body1_config);
+
     let mut vertices = Vec::<Vector2<f32>>::new();
-    vertices.push(Vector2::new(6.5, -0.5));
-    vertices.push(Vector2::new(6.5, -1.0));
-    vertices.push(Vector2::new(7.0, -1.0));
-    vertices.push(Vector2::new(7.5, -0.5));
+    vertices.push(Vector2::new(-0.5, 0.0));
+    vertices.push(Vector2::new(-0.5, -0.5));
+    vertices.push(Vector2::new(0.0, -0.5));
+    vertices.push(Vector2::new(0.5, 0.0));
     let mut shape = PolygonShape::new();
     shape.set(&vertices);
-    let body = world.borrow_mut().create_body();
-    body.borrow_mut().create_fixture(Shape::Polygon(shape));
+    let fixture1_config = FixtureConfig {
+        friction: 0.3,
+        density: 1.0,
+        .. FixtureConfig::default()
+    };
+    body1.borrow_mut().create_fixture(Shape::Polygon(shape), &fixture1_config);
+
+    let body2_config = BodyConfig {
+        position: Vector2::new(6.0, -3.0),
+        angle: 0.8,
+        .. BodyConfig::default()
+    };
+    let body2 = world.borrow_mut().create_body(&body2_config);
 
     let mut shape2 = PolygonShape::new();
     shape2.set_as_box(0.5, 0.5);
-    let body2 = world.borrow_mut().create_body();
-    body2.borrow_mut().create_fixture(Shape::Polygon(shape2));
-    body2.borrow_mut().set_transform(&Vector2::<f32>::new(5.0, -3.0), 0.8);
+    let fixture2_config = FixtureConfig::default();
+    body2.borrow_mut().create_fixture(Shape::Polygon(shape2), &fixture2_config);
 
     world.borrow().broad_phase.print();
 

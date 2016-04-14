@@ -69,7 +69,7 @@ impl ManifoldPoint {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ManifoldType {
     FaceA,
     FaceB,

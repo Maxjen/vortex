@@ -41,8 +41,8 @@ pub enum ContactType {
 pub struct Contact<'a> {
     contact_type: ContactType,
 
-    pub edge_a: ContactEdge<'a>,
-    pub edge_b: ContactEdge<'a>,
+    pub edge_to_a: ContactEdge<'a>,
+    pub edge_to_b: ContactEdge<'a>,
 
     pub fixture_a: FixtureHandle<'a>,
     pub fixture_b: FixtureHandle<'a>,
@@ -71,8 +71,8 @@ impl<'a> Contact<'a> {
         let result;
         let body_a = fixture_a.borrow().body.upgrade().unwrap();
         let body_b = fixture_b.borrow().body.upgrade().unwrap();
-        let edge_a;
-        let edge_b;
+        let edge_to_a;
+        let edge_to_b;
         let friction_a = fixture_a.borrow().friction;
         let friction_b = fixture_b.borrow().friction;
         let restitution_a = fixture_a.borrow().restitution;
@@ -80,8 +80,8 @@ impl<'a> Contact<'a> {
         unsafe {
             result = Rc::new(RefCell::new(Contact {
                 contact_type: ContactType::Polygon,
-                edge_a: mem::uninitialized(),
-                edge_b: mem::uninitialized(),
+                edge_to_a: mem::uninitialized(),
+                edge_to_b: mem::uninitialized(),
                 fixture_a: fixture_a,
                 fixture_b: fixture_b,
                 manifold: Manifold::new(),
@@ -95,19 +95,19 @@ impl<'a> Contact<'a> {
                 is_enabled: true,
                 is_toi: false,
             }));
-            edge_a = ContactEdge {
+            edge_to_a = ContactEdge {
                 body: Rc::downgrade(&body_a),
                 contact: Rc::downgrade(&result),
             };
-            edge_b = ContactEdge {
+            edge_to_b = ContactEdge {
                 body: Rc::downgrade(&body_b),
                 contact: Rc::downgrade(&result),
             };
-            ptr::write(&mut result.borrow_mut().edge_a, edge_a.clone());
-            ptr::write(&mut result.borrow_mut().edge_b, edge_b.clone());
+            ptr::write(&mut result.borrow_mut().edge_to_a, edge_to_a.clone());
+            ptr::write(&mut result.borrow_mut().edge_to_b, edge_to_b.clone());
         }
-        body_a.borrow_mut().add_contact_edge(edge_a);
-        body_b.borrow_mut().add_contact_edge(edge_b);
+        body_a.borrow_mut().add_contact_edge(edge_to_b);
+        body_b.borrow_mut().add_contact_edge(edge_to_a);
         result
     }
 
@@ -118,7 +118,7 @@ impl<'a> Contact<'a> {
         let body_b = try_some!(self.fixture_b.borrow().body.upgrade());
 
         let transform_a = body_a.borrow().get_transform();
-        let transform_b = body_a.borrow().get_transform();
+        let transform_b = body_b.borrow().get_transform();
 
         let was_touching = self.is_touching;
 

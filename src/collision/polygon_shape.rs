@@ -21,18 +21,17 @@ impl PolygonShape {
     }
 
     fn compute_centroid(&mut self) {
-        self.centroid.x = 0.0;
-        self.centroid.y = 0.0;
+        self.centroid = Vector2::zero();
         let mut area = 0.0;
 
-        // p_ref is the reference point for forming triangles.
+        // `p_ref` is the reference point for forming triangles.
         // Its location doesn't change the result (except for rounding error).
         let p_ref = Vector2::<f32>::zero();
         // This code would put the reference point inside the polygon.
         // for v in &self.vertices {
         //     p_ref = p_ref + v;
         // }
-        // p_ref = p_ref * 1.0 / self.vertices.len();
+        // p_ref = p_ref * 1.0 / self.vertices.len() as f32;
 
         let inv3 = 1.0 / 3.0;
         for i in 0..self.vertices.len() {
@@ -147,6 +146,11 @@ impl PolygonShape {
         }
 
         self.compute_centroid();
+
+        for (i, v) in self.vertices.iter().enumerate() {
+            println!("{} {:?}", i, v);
+        }
+        println!("");
     }
 
     /// Build vertices to represent an axis-aligned box centered on the local origin.
@@ -181,5 +185,99 @@ impl PolygonShape {
             min: min - r,
             max: max + r,
         }
+    }
+
+    pub fn compute_mass(&self, density: f32) -> (f32, Vector2<f32>, f32) {
+        // From Box2D:
+        //
+        // Polygon mass, centroid, and inertia.
+        // Let rho be the polygon density in mass per unit area.
+        // Then:
+        // mass = rho * int(dA)
+        // centroid.x = (1/mass) * rho * int(x * dA)
+        // centroid.y = (1/mass) * rho * int(y * dA)
+        // I = rho * int((x*x + y*y) * dA)
+        //
+        // We can compute these integrals by summing all the integrals
+        // for each triangle of the polygon. To evaluate the integral
+        // for a single triangle, we make a change of variables to
+        // the (u,v) coordinates of the triangle:
+        // x = x0 + e1x * u + e2x * v
+        // y = y0 + e1y * u + e2x * v
+        // where 0 <= u && 0 <= v && u + v <= 1
+        //
+        // We integrate u from [0,1-v] and then v from [0,1].
+        // We also need to use the Jacobian of the transformation:
+        // D = cross(e1, e2)
+        //
+        // Simplification: triangle centroid = (1/3) * (p1 + p2 + p3)
+        //
+        // The rest of the derivation is handled by computer algebra.
+
+        assert!(self.vertices.len() >= 3);
+
+        let mut center = Vector2::<f32>::zero();
+        let mut area = 0.0;
+        let mut inertia = 0.0;
+
+        // `p_ref` is the reference point for forming triangles.
+        // Its location doesn't change the result (except for rounding error).
+        let mut p_ref = Vector2::<f32>::zero();
+
+        // This code would put the reference point inside the polygon.
+        for v in &self.vertices {
+            p_ref = p_ref + v;
+        }
+        p_ref = p_ref * 1.0 / self.vertices.len() as f32;
+
+        let inv3 = 1.0 / 3.0;
+        for i in 0..self.vertices.len() {
+            // Triangle vertices.
+            let p1 = self.vertices[i];
+            let p2 = if i + 1 < self.vertices.len() {
+                self.vertices[i + 1]
+            } else {
+                self.vertices[0]
+            };
+
+            let e1 = p1 - p_ref;
+            let e2 = p2 - p_ref;
+
+            let d = e1.perp_dot(e2);
+
+            let triangle_area = 0.5 * d;
+            area += triangle_area;
+
+            // Area weighted centroid.
+            center = center + (e1 + e2) * triangle_area * inv3;
+            //self.centroid = self.centroid + (p_ref + p1 + p2) * triangle_area * inv3;
+
+            let ex1 = e1.x;
+            let ey1 = e1.y;
+            let ex2 = e2.x;
+            let ey2 = e2.y;
+
+            let intx2 = ex1 * ex1 + ex2 * ex1 + ex2 * ex2;
+            let inty2 = ey1 * ey1 + ey2 * ey1 + ey2 * ey2;
+
+            inertia += (0.25 * inv3 * d) * (intx2 + inty2);
+        }
+        //self.centroid = self.centroid * 1.0 / area;
+
+        // Total mass.
+        let mass = density * area;
+
+        // Center of mass.
+        assert!(area > f32::EPSILON);
+        center = center * 1.0 / area;
+        let center_result = center + p_ref;
+
+        // Inertia tensor relative to the local origin (p_ref).
+        inertia = density * inertia;
+
+        // Shift to center of mass then to original body origin.
+        inertia = inertia + mass * (dot(center_result, center_result) - dot(center, center));
+
+        (mass, center_result, inertia)
     }
 }

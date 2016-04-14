@@ -4,26 +4,64 @@ use std::mem;
 use std::ptr;
 use cgmath::*;
 use ::collision::{BroadPhase, Shape};
+use ::common;
 use ::common::{Rotation2d, Transform2d, Sweep};
-use super::{WorldHandleWeak, FixtureHandle, Fixture, ContactEdge, Contact};
+use super::{WorldHandleWeak, FixtureHandle, FixtureConfig, Fixture, ContactEdge, Contact};
 
 pub type BodyHandle<'a> = Rc<RefCell<Body<'a>>>;
 pub type BodyHandleWeak<'a> = Weak<RefCell<Body<'a>>>;
 
+#[derive(Clone, Copy, Debug)]
 pub enum BodyType {
     Static,
     Kinematic,
     Dynamic,
 }
 
-/*bitflags! {
-    flags Flags: u32 {
-        const FLAG_ISLAND = 0b00000001,
-        const FLAG_AWAKE  = 0b00000010,
-        const FLAG_BULLET = 0b00000100,
-        const FLAG_ACTIVE = 0b00001000,
+pub struct BodyConfig {
+    pub body_type: BodyType,
+    pub position: Vector2<f32>,
+    pub angle: f32,
+    pub linear_velocity: Vector2<f32>,
+    pub angular_velocity: f32,
+    pub linear_damping: f32,
+    pub angular_damping: f32,
+    pub gravity_scale: f32,
+    pub awake: bool,
+    pub auto_sleep: bool,
+    pub bullet: bool,
+    pub active: bool,
+}
+
+impl Default for BodyConfig {
+    fn default() -> BodyConfig {
+        BodyConfig {
+            body_type: BodyType::Static,
+            position: Vector2::zero(),
+            angle: 0.0,
+            linear_velocity: Vector2::zero(),
+            angular_velocity: 0.0,
+            linear_damping: 0.0,
+            angular_damping: 0.0,
+            gravity_scale: 1.0,
+            awake: true,
+            auto_sleep: true,
+            bullet: false,
+            active: true,
+        }
     }
-}*/
+}
+
+bitflags! {
+    flags Flags: u32 {
+        const FLAG_ISLAND         = 0b00000001,
+        const FLAG_AWAKE          = 0b00000010,
+        const FLAG_AUTO_SLEEP     = 0b00000100,
+        const FLAG_BULLET         = 0b00001000,
+        const FLAG_FIXED_ROTATION = 0b00010000,
+        const FLAG_ACTIVE         = 0b00100000,
+    }
+}
 
 pub struct Body<'a> {
     pub id: u32,
@@ -50,11 +88,7 @@ pub struct Body<'a> {
     pub angular_damping: f32,
     pub gravity_scale: f32,
 
-    //flags: Flags,
-    pub is_island: bool,
-    is_awake: bool,
-    pub is_bullet: bool,
-    is_active: bool,
+    flags: Flags,
 
     pub island_index: usize,
 
@@ -66,30 +100,61 @@ pub struct Body<'a> {
 }
 
 impl<'a> Body<'a> {
-    pub fn new(id: u32, world: WorldHandleWeak<'a>) -> BodyHandle<'a> {
+    pub fn new(id: u32, world: WorldHandleWeak<'a>, body_config: &BodyConfig) -> BodyHandle<'a> {
         let result;
+
+        let transform = Transform2d::new(body_config.position, Rotation2d::new(body_config.angle));
+
+        let mut sweep = Sweep::default();
+        sweep.local_center = Vector2::zero();
+        sweep.c0 = transform.position;
+        sweep.c = transform.position;
+        sweep.a0 = body_config.angle;
+        sweep.a = body_config.angle;
+        sweep.alpha0 = 0.0;
+
+        let mass;
+        let inv_mass;
+        if let BodyType::Dynamic = body_config.body_type {
+            mass = 1.0;
+            inv_mass = 1.0;
+        } else {
+            mass = 0.0;
+            inv_mass = 0.0;
+        }
+
+        let mut flags = Flags::empty();
+        if body_config.awake {
+            flags.insert(FLAG_AWAKE);
+        }
+        if body_config.auto_sleep {
+            flags.insert(FLAG_AUTO_SLEEP);
+        }
+        if body_config.bullet {
+            flags.insert(FLAG_BULLET);
+        }
+        if body_config.active {
+            flags.insert(FLAG_ACTIVE);
+        }
+
         unsafe {
             result = Rc::new(RefCell::new(Body {
                 id: id,
-                body_type: BodyType::Static,
-                transform: Transform2d::default(),
-                sweep: Sweep::default(),
-                linear_velocity: Vector2::zero(),
-                angular_velocity: 0.0,
+                body_type: body_config.body_type,
+                transform: transform,
+                sweep: sweep,
+                linear_velocity: body_config.linear_velocity,
+                angular_velocity: body_config.angular_velocity,
                 force: Vector2::zero(),
                 torque: 0.0,
-                mass: 1.0,
-                inv_mass: 1.0,
+                mass: mass,
+                inv_mass: inv_mass,
                 inertia: 0.0,
                 inv_inertia: 0.0,
-                linear_damping: 0.0,
-                angular_damping: 0.0,
-                gravity_scale: 1.0,
-                //flags: FLAG_AWAKE,
-                is_island: false,
-                is_awake: true,
-                is_bullet: false,
-                is_active: true,
+                linear_damping: body_config.linear_damping,
+                angular_damping: body_config.angular_damping,
+                gravity_scale: body_config.gravity_scale,
+                flags: flags,
                 island_index: 0,
                 fixtures: Vec::new(),
                 contact_edges: Vec::new(),
@@ -102,17 +167,30 @@ impl<'a> Body<'a> {
         result
     }
 
-    pub fn create_fixture(&mut self, shape: Shape) -> FixtureHandle<'a> {
-        let fixture = Rc::new(RefCell::new(Fixture::new(self.self_handle.clone(), shape)));
+    pub fn create_fixture(&mut self, shape: Shape, fixture_config: &FixtureConfig) -> FixtureHandle<'a> {
+        let fixture = Rc::new(RefCell::new(Fixture::new(self.self_handle.clone(), shape, fixture_config)));
         self.fixtures.push(fixture.clone());
 
         let world = self.world.upgrade().unwrap();
-        let broad_phase = &mut world.borrow_mut().broad_phase;
+        {
+            let broad_phase = &mut world.borrow_mut().broad_phase;
 
-        let fixture_handle = fixture.clone();
-        fixture.borrow_mut().create_proxy(fixture_handle, broad_phase, &self.transform);
+            let fixture_handle = fixture.clone();
+            fixture.borrow_mut().create_proxy(fixture_handle, broad_phase, &self.transform);
+        }
+
         /*let aabb = fixture.borrow().shape.compute_aabb(&self.transform);
         fixture.borrow_mut().proxy_id = broad_phase.create_proxy(&aabb, fixture.clone());*/
+
+        // Adjust mass properties if needed.
+        if fixture.borrow().density > 0.0 {
+            self.reset_mass_data();
+        }
+
+        // Let the world know we have a new fixture. This will cause new contacts
+        // to be created at the beginning of the next time step.
+        world.borrow_mut().set_new_fixtures(true);
+
         fixture
     }
 
@@ -209,6 +287,14 @@ impl<'a> Body<'a> {
     }
 
     pub fn set_linear_velocity(&mut self, linear_velocity: Vector2<f32>) {
+        if let BodyType::Static = self.body_type {
+            return;
+        }
+
+        if dot(linear_velocity, linear_velocity) > 0.0 {
+            self.set_awake(true);
+        }
+
         self.linear_velocity = linear_velocity;
     }
 
@@ -217,6 +303,14 @@ impl<'a> Body<'a> {
     }
 
     pub fn set_angular_velocity(&mut self, angular_velocity: f32) {
+        if let BodyType::Static = self.body_type {
+            return;
+        }
+
+        if angular_velocity * angular_velocity > 0.0 {
+            self.set_awake(true);
+        }
+
         self.angular_velocity = angular_velocity;
     }
 
@@ -228,12 +322,105 @@ impl<'a> Body<'a> {
         self.mass
     }
 
-    pub fn apply_force_to_center(&mut self, force: &Vector2<f32>) {
-        self.force = self.force + force;
+    /// Get the rotational inertia of the body about the local origin.
+    pub fn get_inertia(&self) -> f32 {
+        self.inertia + self.mass * dot(self.sweep.local_center, self.sweep.local_center)
     }
 
-    pub fn apply_torque(&mut self, torque: f32) {
-        self.torque += torque;
+    /// This resets the mass properties to the sum of the mass properties of the fixtures.
+    /// This normally does not need to be called unless you called `set_mass_data` to override
+    /// the mass and you later want to reset the mass.
+    pub fn reset_mass_data(&mut self) {
+        // Compute mass data from shapes. Each shape has its own density.
+        self.mass = 0.0;
+        self.inv_mass = 0.0;
+        self.inertia = 0.0;
+        self.inv_inertia = 0.0;
+        self.sweep.local_center = Vector2::zero();
+
+        // Static and kinematic bodies have zero mass.
+        let is_static = if let BodyType::Static = self.body_type { true } else { false };
+        let is_kinematic = if let BodyType::Kinematic = self.body_type { true } else { false };
+        if is_static || is_kinematic {
+            self.sweep.c0 = self.transform.position;
+            self.sweep.c = self.transform.position;
+            self.sweep.a0 = self.sweep.a;
+            return;
+        }
+
+        // Accumulate mass over all fixtures.
+        let mut local_center = Vector2::<f32>::zero();
+        for f in &self.fixtures {
+            if f.borrow().density == 0.0 {
+                continue;
+            }
+
+            let (mass, center, inertia) = f.borrow().get_mass_data();
+            self.mass += mass;
+            local_center = local_center + center * mass;
+            self.inertia += inertia;
+        }
+
+        // Compute center of mass.
+        if self.mass > 0.0 {
+            self.inv_mass = 1.0 / self.mass;
+            local_center = local_center * self.inv_mass;
+        } else {
+            // Force all dynamic bodies to have a positive mass.
+            self.mass = 1.0;
+            self.inv_mass = 1.0;
+        }
+
+        if self.inertia > 0.0 && !self.flags.contains(FLAG_FIXED_ROTATION) {
+            // Center the inertia about the center of mass.
+            self.inertia -= self.mass * dot(local_center, local_center);
+            assert!(self.inertia > 0.0);
+            self.inv_inertia = 1.0 / self.inertia;
+        } else {
+            self.inertia = 0.0;
+            self.inv_inertia = 0.0;
+        }
+
+        // Move center of mass.
+        let old_center = self.sweep.c;
+        self.sweep.local_center = local_center;
+        self.sweep.c0 = self.transform.apply(&self.sweep.local_center);
+        self.sweep.c = self.sweep.c0;
+
+        // Update center of mass velocity.
+        self.linear_velocity = self.linear_velocity + common::cross_s_v(self.angular_velocity, &(self.sweep.c - old_center));
+    }
+
+    pub fn apply_force_to_center(&mut self, force: &Vector2<f32>, wake: bool) {
+        let dynamic = if let BodyType::Dynamic = self.body_type { true } else { false };
+        if !dynamic {
+            return;
+        }
+
+        if wake && !self.is_awake() {
+            self.set_awake(true);
+        }
+
+        // Don't accumulate a force if the body is sleeping.
+        if self.is_awake() {
+            self.force = self.force + force;
+        }
+    }
+
+    pub fn apply_torque(&mut self, torque: f32, wake: bool) {
+        let dynamic = if let BodyType::Dynamic = self.body_type { true } else { false };
+        if !dynamic {
+            return;
+        }
+
+        if wake && !self.is_awake() {
+            self.set_awake(true);
+        }
+
+        // Don't accumulate a torque if the body is sleeping.
+        if self.is_awake() {
+            self.torque += torque;
+        }
     }
 
     pub fn synchronize_transform(&mut self) {
@@ -251,20 +438,62 @@ impl<'a> Body<'a> {
         }
     }
 
+    pub fn set_island(&mut self, is_island: bool) {
+        if is_island {
+            self.flags.insert(FLAG_ISLAND);
+        } else {
+            self.flags.remove(FLAG_ISLAND);
+        }
+    }
+
+    pub fn is_island(&self) -> bool {
+        self.flags.contains(FLAG_ISLAND)
+    }
+
     /// Set the sleep state of the body. A sleeping body has very low CPU cost.
     pub fn set_awake(&mut self, is_awake: bool) {
         // TODO: sleep_time
-        if !is_awake {
+        if is_awake {
+            self.flags.insert(FLAG_AWAKE);
+        } else {
+            self.flags.remove(FLAG_AWAKE);
             self.linear_velocity = Vector2::zero();
             self.angular_velocity = 0.0;
             self.force = Vector2::zero();
             self.torque = 0.0;
         }
-        self.is_awake = is_awake;
     }
 
     pub fn is_awake(&self) -> bool {
-        self.is_awake
+        self.flags.contains(FLAG_AWAKE)
+    }
+
+    pub fn set_bullet(&mut self, is_bullet: bool) {
+        if is_bullet {
+            self.flags.insert(FLAG_BULLET);
+        } else {
+            self.flags.remove(FLAG_BULLET);
+        }
+    }
+
+    pub fn is_bullet(&self) -> bool {
+        self.flags.contains(FLAG_BULLET)
+    }
+
+    pub fn set_fixed_rotation(&mut self, fixed_rotation: bool) {
+        if fixed_rotation == self.flags.contains(FLAG_FIXED_ROTATION) {
+            return;
+        }
+
+        if fixed_rotation {
+            self.flags.insert(FLAG_FIXED_ROTATION);
+        } else {
+            self.flags.remove(FLAG_FIXED_ROTATION);
+        }
+
+        self.angular_velocity = 0.0;
+
+        self.reset_mass_data();
     }
 
     /// Set the active state of the body. An inactive body is not simulated and cannot be
@@ -280,11 +509,15 @@ impl<'a> Body<'a> {
     pub fn set_active(&mut self, is_active: bool) {
         let world = self.world.upgrade().unwrap();
 
+        if is_active == self.is_active() {
+            return;
+        }
+
         if is_active {
+            self.flags.insert(FLAG_ACTIVE);
+
             // Create all proxies.
-
             let broad_phase = &mut world.borrow_mut().broad_phase;
-
             for fixture in &self.fixtures {
                 /*let aabb = fixture.borrow().shape.compute_aabb(&self.transform);
                 fixture.borrow_mut().proxy_id = broad_phase.create_proxy(&aabb, fixture.clone());*/
@@ -294,6 +527,8 @@ impl<'a> Body<'a> {
                 // Contacts are created the next time step.
             }
         } else {
+            self.flags.remove(FLAG_ACTIVE);
+
             {
                 // Destroy all proxies.
                 let broad_phase = &mut world.borrow_mut().broad_phase;
@@ -309,12 +544,13 @@ impl<'a> Body<'a> {
                     let contact = ce.contact.upgrade().unwrap();
                     contact_manager.delete_contact(contact);
                 }
+                self.contact_edges.clear();
             }
         }
     }
 
     pub fn is_active(&self) -> bool {
-        self.is_active
+        self.flags.contains(FLAG_ACTIVE)
     }
 
     pub fn advance(&mut self, alpha: f32) {
