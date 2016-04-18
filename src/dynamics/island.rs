@@ -243,8 +243,8 @@ impl<'a> Island<'a> {
 
             // Check for large velocities.
             let translation = v * dt;
-            if translation.length2() > common::MAX_TRANSLATION_SQUARED {
-                let ratio = common::MAX_TRANSLATION / translation.length();
+            if translation.magnitude2() > common::MAX_TRANSLATION_SQUARED {
+                let ratio = common::MAX_TRANSLATION / translation.magnitude();
                 v = v * ratio;
             }
 
@@ -365,8 +365,8 @@ impl<'a> Island<'a> {
 
             // Check for large velocities.
             let translation = v * dt;
-            if translation.length2() > common::MAX_TRANSLATION_SQUARED {
-                let ratio = common::MAX_TRANSLATION / translation.length();
+            if translation.magnitude2() > common::MAX_TRANSLATION_SQUARED {
+                let ratio = common::MAX_TRANSLATION / translation.magnitude();
                 v = v * ratio;
             }
 

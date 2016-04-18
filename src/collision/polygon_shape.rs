@@ -66,7 +66,7 @@ impl PolygonShape {
         // Perform welding and copy vertices into local buffer.
         'outer: for v in vertices {
             for v_tmp in &vertices_tmp {
-                if (v - v_tmp).length2() < (0.5 * common::LINEAR_SLOP) * (0.5 * common::LINEAR_SLOP) {
+                if (v - v_tmp).magnitude2() < (0.5 * common::LINEAR_SLOP) * (0.5 * common::LINEAR_SLOP) {
                     continue 'outer;
                 }
             }
@@ -110,7 +110,7 @@ impl PolygonShape {
                 }
 
                 // Collinearity check.
-                if c == 0.0 && v.length2() > r.length2() {
+                if c == 0.0 && v.magnitude2() > r.magnitude2() {
                     ie = i;
                 }
             }
@@ -139,7 +139,7 @@ impl PolygonShape {
                 0
             };
             let edge = self.vertices[i2] - self.vertices[i];
-            assert!(edge.length2() > f32::EPSILON * f32::EPSILON);
+            assert!(edge.magnitude2() > f32::EPSILON * f32::EPSILON);
             let mut normal = common::cross_v_s(&edge, 1.0);
             normal = normal.normalize();
             self.normals.push(normal);

@@ -79,8 +79,9 @@ impl<T> DynamicTree<T> {
     pub fn create_proxy(&mut self, aabb: &Aabb, user_data: Option<T>) -> u32 {
         let proxy_id = self.allocate_node();
 
-        self.nodes[proxy_id as usize].aabb.min = aabb.min - common::AABB_EXTENSION;
-        self.nodes[proxy_id as usize].aabb.max = aabb.max + common::AABB_EXTENSION;
+        let r = vec2(common::AABB_EXTENSION, common::AABB_EXTENSION);
+        self.nodes[proxy_id as usize].aabb.min = aabb.min - r;
+        self.nodes[proxy_id as usize].aabb.max = aabb.max + r;
         self.nodes[proxy_id as usize].user_data = user_data;
         self.nodes[proxy_id as usize].height = 0;
 
@@ -114,8 +115,9 @@ impl<T> DynamicTree<T> {
         self.remove_leaf(proxy_id);
 
         let mut new_aabb = aabb.clone();
-        new_aabb.min = new_aabb.min - common::AABB_EXTENSION;
-        new_aabb.max = new_aabb.max + common::AABB_EXTENSION;
+        let r = vec2(common::AABB_EXTENSION, common::AABB_EXTENSION);
+        new_aabb.min = new_aabb.min - r;
+        new_aabb.max = new_aabb.max + r;
 
         let d: Vector2<f32> = displacement * 2.0;
 

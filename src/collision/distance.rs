@@ -198,7 +198,7 @@ impl Simplex {
     fn get_metric(&self) -> f32 {
         match self.vertices.len() {
             1 => 0.0,
-            2 => (self.vertices[1].w - self.vertices[0].w).length(),
+            2 => (self.vertices[1].w - self.vertices[0].w).magnitude(),
             3 => (self.vertices[1].w - self.vertices[0].w).perp_dot(self.vertices[2].w - self.vertices[0].w),
             _ => unreachable!("Invalid number of simplex vertices!"),
         }
@@ -413,7 +413,7 @@ pub fn distance(cache: &mut SimplexCache, proxy_a: &DistanceProxy, proxy_b: &Dis
 
         // Compute closest point.
         let p = simplex.get_closest_point();
-        distance_sqr2 = p.length2();
+        distance_sqr2 = p.magnitude2();
 
         // Ensure progress.
         /*if distance_sqr2 >= distance_sqr1 {
@@ -425,7 +425,7 @@ pub fn distance(cache: &mut SimplexCache, proxy_a: &DistanceProxy, proxy_b: &Dis
         let d = simplex.get_search_direction();
 
         // Ensure the search direction is numerically fit.
-        if d.length2() < f32::EPSILON * f32::EPSILON {
+        if d.magnitude2() < f32::EPSILON * f32::EPSILON {
             // The origin is probably contained by a line segment
             // or triangle. Thus the shapes are overlapped.
 
@@ -472,7 +472,7 @@ pub fn distance(cache: &mut SimplexCache, proxy_a: &DistanceProxy, proxy_b: &Dis
 
     // Prepare output.
     let (mut point_a, mut point_b) = simplex.get_witness_points();
-    let mut distance = (point_b - point_a).length();
+    let mut distance = (point_b - point_a).magnitude();
 
     // Cache the simplex.
     simplex.write_cache(cache);
