@@ -7,7 +7,7 @@ extern crate time;
 use inferno::rendering::{ColorVertex2d, DrawBatch};
 use cgmath::*;
 use vortex::collision::{Shape, PolygonShape};
-use vortex::common::{DebugDraw, Transform2d, Rotation2d};
+use vortex::common::{DebugDraw};
 use vortex::dynamics::{BodyType, BodyConfig, FixtureConfig, World};
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -78,7 +78,7 @@ impl<'a> DebugDraw for MyDebugDraw<'a> {
             color: [255, 255, 255, 50],
         });
 
-        let mut index_buffer = vec![0, 1];
+        let index_buffer = vec![0, 1];
 
         self.draw_batch.add_color_2d_lines(&vertex_buffer, &index_buffer);
     }

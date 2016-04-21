@@ -93,7 +93,7 @@ impl<'a> World<'a> {
                 inv_dt0: 0.0,
                 warm_starting: true,
                 sub_stepping: false,
-                continuous_physics: false,
+                continuous_physics: true,
                 step_complete: true,
                 profile: Default::default(),
             }));
@@ -120,6 +120,14 @@ impl<'a> World<'a> {
         if let Some(_) = self.bodies.remove(&id) {
             self.body_index_pool.recycle_index(id);
         }
+    }
+
+    pub fn create_joint(&mut self) {
+
+    }
+
+    pub fn delete_joint(&mut self) {
+
     }
 
     pub fn get_body(&self, id: u32) -> Option<BodyHandle<'a>> {
@@ -181,6 +189,10 @@ impl<'a> World<'a> {
         for c in &self.contact_manager.contacts {
             c.borrow_mut().is_island = false;
         }
+        /*for j in &self.joints {
+            j.borrow_mut().set_island(false);
+        }*/
+        unimplemented!();
 
         // Build and simulate all awake islands.
         let mut stack: Vec<BodyHandle> = Vec::with_capacity(self.bodies.len());
@@ -256,6 +268,9 @@ impl<'a> World<'a> {
                     other.borrow_mut().set_island(true);
                     stack.push(other);
                 }
+
+                // Search all joints connected to this body.
+                unimplemented!()
             }
 
             let mut profile = Profile::default();

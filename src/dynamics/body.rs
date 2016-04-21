@@ -12,24 +12,68 @@ pub type BodyHandle<'a> = Rc<RefCell<Body<'a>>>;
 pub type BodyHandleWeak<'a> = Weak<RefCell<Body<'a>>>;
 
 #[derive(Clone, Copy, Debug)]
+/// The body type.
 pub enum BodyType {
+    /// zero mass, zero velocity, may be manually moved
     Static,
+
+    /// zero mass, non-zero velocity set by user, moved by solver
     Kinematic,
+
+    /// positive mass, non-zero velocity determined by forces, moved by solver
     Dynamic,
 }
 
+/// A `BodyConfig` holds all the data needed to construct a rigid body.
+/// You can safely re-use `BodyConfig`s. Shapes are added to a body after construction.
 pub struct BodyConfig {
+    /// The body type: `Static`, `Kinematic`, or `Dynamic`.
+    /// Note: If a dynamic body would have zero mass, the mass is set to one.
     pub body_type: BodyType,
+
+    /// The world position of the body. Avoid creating bodies at the origin
+    /// since this can lead to many overlapping shapes.
     pub position: Vector2<f32>,
+
+    /// The world angle of the body in radians.
     pub angle: f32,
+
+    /// The linear velocity of the body's origin in world coordinates.
     pub linear_velocity: Vector2<f32>,
+
+    /// The angular velocity of the body.
     pub angular_velocity: f32,
+
+    /// Linear damping is used to reduce the linear velocity. The damping parameter
+    /// can be larger than 1.0 but the damping effect becomes sensitive to the
+    /// time step when the damping parameter is large.
     pub linear_damping: f32,
+
+    /// Angular damping is used to reduce the angular velocity. The damping parameter
+    /// can be larger than 1.0 but the damping effect becomes sensitive to the
+    /// time step when the damping parameter is large.
     pub angular_damping: f32,
+
+    /// Scales the gravity applied to this body.
     pub gravity_scale: f32,
+
+    /// Is this body initially awake or sleeping?
     pub awake: bool,
+
+    /// Set this flag to false if this body should never fall asleep. Note that
+    /// this increases CPU usage.
     pub auto_sleep: bool,
+
+    /// Is this a fast moving body that should be prevented from tunneling through
+    /// other moving bodies? Note that all bodies are prevented from tunneling through
+    /// kinematic and static bodies. This setting is only considered on dynamic bodies.
+    /// You should use this flag sparingly since it increases processing time.
     pub bullet: bool,
+
+    /// Should this body be prevented from rotating? Useful for characters.
+    pub fixed_rotation: bool,
+
+    /// Does this body start out active?
     pub active: bool,
 }
 
@@ -47,6 +91,7 @@ impl Default for BodyConfig {
             awake: true,
             auto_sleep: true,
             bullet: false,
+            fixed_rotation: false,
             active: true,
         }
     }
@@ -63,6 +108,7 @@ bitflags! {
     }
 }
 
+/// A rigid body. These are created via `World::create_body`.
 pub struct Body<'a> {
     pub id: u32,
 
@@ -132,6 +178,9 @@ impl<'a> Body<'a> {
         }
         if body_config.bullet {
             flags.insert(FLAG_BULLET);
+        }
+        if body_config.fixed_rotation {
+            flags.insert(FLAG_FIXED_ROTATION);
         }
         if body_config.active {
             flags.insert(FLAG_ACTIVE);
@@ -494,6 +543,10 @@ impl<'a> Body<'a> {
         self.angular_velocity = 0.0;
 
         self.reset_mass_data();
+    }
+
+    pub fn is_fixed_rotation(&self) -> bool {
+        self.flags.contains(FLAG_FIXED_ROTATION)
     }
 
     /// Set the active state of the body. An inactive body is not simulated and cannot be
