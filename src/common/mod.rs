@@ -271,7 +271,7 @@ impl Sweep {
         result.rotation.set_angle(self.a0 * (1.0 - beta) + self.a * beta);*/
 
         // Shift to origin.
-        result.position = result.position - result.rotation.apply(&self.local_center);
+        result.position -= result.rotation.apply(&self.local_center);
         result
     }
 
@@ -280,7 +280,7 @@ impl Sweep {
     pub fn advance(&mut self, alpha: f32) {
         assert!(self.alpha0 < 1.0);
         let beta = (alpha - self.alpha0) / (1.0 - self.alpha0);
-        self.c0 = self.c0 + (self.c - self.c0) * beta;
+        self.c0 += (self.c - self.c0) * beta;
         self.a0 += (self.a - self.a0) * beta;
         self.alpha0 = alpha;
     }

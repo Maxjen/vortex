@@ -325,9 +325,9 @@ impl ContactSolver {
             for vcp in &vc.points {
                 let p = normal * vcp.normal_impulse + tangent * vcp.tangent_impulse;
                 w_a -= i_a * vcp.r_a.perp_dot(p);
-                v_a = v_a - p * m_a;
+                v_a -= p * m_a;
                 w_b += i_b * vcp.r_b.perp_dot(p);
-                v_b = v_b + p * m_b;
+                v_b += p * m_b;
             }
 
             velocities[index_a].v = v_a;
@@ -376,10 +376,10 @@ impl ContactSolver {
                 // Apply contact impulse.
                 let p = tangent * lambda;
 
-                v_a = v_a - p * m_a;
+                v_a -= p * m_a;
                 w_a -= i_a * vcp.r_a.perp_dot(p);
 
-                v_b = v_b + p * m_b;
+                v_b += p * m_b;
                 w_b += i_b * vcp.r_b.perp_dot(p);
             }
 
@@ -402,10 +402,10 @@ impl ContactSolver {
                     // Apply contact impulse.
                     let p = normal * lambda;
 
-                    v_a = v_a - p * m_a;
+                    v_a -= p * m_a;
                     w_a -= i_a * vcp.r_a.perp_dot(p);
 
-                    v_b = v_b + p * m_b;
+                    v_b += p * m_b;
                     w_b += i_b * vcp.r_b.perp_dot(p);
                 }
             } else {
@@ -463,7 +463,7 @@ impl ContactSolver {
                 let mut b = vec2(vn1 - vc.points[0].velocity_bias, vn2 - vc.points[1].velocity_bias);
 
                 // Compute b'
-                b = b - vc.k * a;
+                b -= vc.k * a;
 
                 let k_error_tol = 1e-3;
 
@@ -494,9 +494,9 @@ impl ContactSolver {
                             // Apply incremental impulse.
                             let p1 = normal * d.x;
                             let p2 = normal * d.y;
-                            v_a = v_a - (p1 + p2) * m_a;
+                            v_a -= (p1 + p2) * m_a;
                             w_a -= i_a * (vcp1.r_a.perp_dot(p1) + vcp2.r_a.perp_dot(p2));
-                            v_b = v_b + (p1 + p2) * m_b;
+                            v_b += (p1 + p2) * m_b;
                             w_b += i_b * (vcp1.r_b.perp_dot(p1) + vcp2.r_b.perp_dot(p2));
 
                             if DEBUG_SOLVER {
@@ -542,9 +542,9 @@ impl ContactSolver {
                             // Apply incremental impulse.
                             let p1 = normal * d.x;
                             let p2 = normal * d.y;
-                            v_a = v_a - (p1 + p2) * m_a;
+                            v_a -= (p1 + p2) * m_a;
                             w_a -= i_a * (vcp1.r_a.perp_dot(p1) + vcp2.r_a.perp_dot(p2));
-                            v_b = v_b + (p1 + p2) * m_b;
+                            v_b += (p1 + p2) * m_b;
                             w_b += i_b * (vcp1.r_b.perp_dot(p1) + vcp2.r_b.perp_dot(p2));
 
                             if DEBUG_SOLVER {
@@ -586,9 +586,9 @@ impl ContactSolver {
                             // Apply incremental impulse.
                             let p1 = normal * d.x;
                             let p2 = normal * d.y;
-                            v_a = v_a - (p1 + p2) * m_a;
+                            v_a -= (p1 + p2) * m_a;
                             w_a -= i_a * (vcp1.r_a.perp_dot(p1) + vcp2.r_a.perp_dot(p2));
-                            v_b = v_b + (p1 + p2) * m_b;
+                            v_b += (p1 + p2) * m_b;
                             w_b += i_b * (vcp1.r_b.perp_dot(p1) + vcp2.r_b.perp_dot(p2));
 
                             if DEBUG_SOLVER {
@@ -630,9 +630,9 @@ impl ContactSolver {
                             // Apply incremental impulse.
                             let p1 = normal * d.x;
                             let p2 = normal * d.y;
-                            v_a = v_a - (p1 + p2) * m_a;
+                            v_a -= (p1 + p2) * m_a;
                             w_a -= i_a * (vcp1.r_a.perp_dot(p1) + vcp2.r_a.perp_dot(p2));
-                            v_b = v_b + (p1 + p2) * m_b;
+                            v_b += (p1 + p2) * m_b;
                             w_b += i_b * (vcp1.r_b.perp_dot(p1) + vcp2.r_b.perp_dot(p2));
                         }
                         break;
@@ -722,10 +722,10 @@ impl ContactSolver {
 
                 let p = normal * impulse;
 
-                c_a = c_a - p * m_a;
+                c_a -= p * m_a;
                 a_a -= i_a * r_a.perp_dot(p);
 
-                c_b = c_b + p * m_b;
+                c_b += p * m_b;
                 a_b += i_b * r_b.perp_dot(p);
             }
 
@@ -805,10 +805,10 @@ impl ContactSolver {
 
                 let p = normal * impulse;
 
-                c_a = c_a - p * m_a;
+                c_a -= p * m_a;
                 a_a -= i_a * r_a.perp_dot(p);
 
-                c_b = c_b + p * m_b;
+                c_b += p * m_b;
                 a_b += i_b * r_b.perp_dot(p);
             }
 

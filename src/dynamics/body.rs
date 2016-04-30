@@ -6,7 +6,7 @@ use cgmath::*;
 use ::collision::{BroadPhase, Shape};
 use ::common;
 use ::common::{Rotation2d, Transform2d, Sweep};
-use super::{WorldHandleWeak, FixtureHandle, FixtureConfig, Fixture, ContactEdge, Contact};
+use super::{WorldHandleWeak, FixtureHandle, FixtureConfig, Fixture, ContactEdge, Contact, JointHandleWeak};
 
 pub type BodyHandle<'a> = Rc<RefCell<Body<'a>>>;
 pub type BodyHandleWeak<'a> = Weak<RefCell<Body<'a>>>;
@@ -140,6 +140,7 @@ pub struct Body<'a> {
 
     fixtures: Vec<FixtureHandle<'a>>,
     contact_edges: Vec<ContactEdge<'a>>,
+    joints: Vec<JointHandleWeak<'a>>,
 
     world: WorldHandleWeak<'a>,
     self_handle: BodyHandleWeak<'a>,
@@ -207,6 +208,7 @@ impl<'a> Body<'a> {
                 island_index: 0,
                 fixtures: Vec::new(),
                 contact_edges: Vec::new(),
+                joints: Vec::new(),
                 world: world,
                 self_handle: mem::uninitialized(),
             }));
@@ -310,6 +312,14 @@ impl<'a> Body<'a> {
         }
     }
 
+    pub fn get_joints(&self) -> &Vec<JointHandleWeak<'a>> {
+        &self.joints
+    }
+
+    pub fn add_joint(&mut self, joint: JointHandleWeak<'a>) {
+        self.joints.push(joint);
+    }
+
     pub fn set_transform(&mut self, position: &Vector2<f32>, angle: f32) {
         self.transform.position = *position;
         self.transform.rotation.set_angle(angle);
@@ -406,14 +416,14 @@ impl<'a> Body<'a> {
 
             let (mass, center, inertia) = f.borrow().get_mass_data();
             self.mass += mass;
-            local_center = local_center + center * mass;
+            local_center += center * mass;
             self.inertia += inertia;
         }
 
         // Compute center of mass.
         if self.mass > 0.0 {
             self.inv_mass = 1.0 / self.mass;
-            local_center = local_center * self.inv_mass;
+            local_center *= self.inv_mass;
         } else {
             // Force all dynamic bodies to have a positive mass.
             self.mass = 1.0;
@@ -437,7 +447,7 @@ impl<'a> Body<'a> {
         self.sweep.c = self.sweep.c0;
 
         // Update center of mass velocity.
-        self.linear_velocity = self.linear_velocity + common::cross_s_v(self.angular_velocity, &(self.sweep.c - old_center));
+        self.linear_velocity += common::cross_s_v(self.angular_velocity, &(self.sweep.c - old_center));
     }
 
     pub fn apply_force_to_center(&mut self, force: &Vector2<f32>, wake: bool) {
@@ -473,8 +483,20 @@ impl<'a> Body<'a> {
     }
 
     pub fn synchronize_transform(&mut self) {
+        let old_angle = self.transform.rotation.get_angle();
+        let old_position = self.transform.position;
+
         self.transform.rotation.set_angle(self.sweep.a);
         self.transform.position = self.sweep.c - self.transform.rotation.apply(&self.sweep.local_center);
+
+        if let BodyType::Static = self.body_type {
+            if old_angle != self.transform.rotation.get_angle() {
+                println!("angle changed");
+            }
+            if old_position != self.transform.position {
+                println!("position changed");
+            }
+        }
     }
 
     pub fn synchronize_fixtures(&mut self, broad_phase: &mut BroadPhase<'a>) {

@@ -122,15 +122,15 @@ impl<T> DynamicTree<T> {
         let d: Vector2<f32> = displacement * 2.0;
 
         if d.x < 0.0 {
-            new_aabb.min.x = new_aabb.min.x + d.x;
+            new_aabb.min.x += d.x;
         } else {
-            new_aabb.max.x = new_aabb.max.x + d.x;
+            new_aabb.max.x += d.x;
         }
 
         if d.y < 0.0 {
-            new_aabb.min.y = new_aabb.min.y + d.y;
+            new_aabb.min.y += d.y;
         } else {
-            new_aabb.max.y = new_aabb.max.y + d.y;
+            new_aabb.max.y += d.y;
         }
 
         self.nodes[proxy_id as usize].aabb = new_aabb;
@@ -601,8 +601,8 @@ impl<T> DynamicTree<T> {
 
     pub fn shift_origin(&mut self, new_origin: Vector2<f32>) {
         for node in &mut self.nodes {
-            node.aabb.min = node.aabb.min - new_origin;
-            node.aabb.max = node.aabb.max - new_origin;
+            node.aabb.min -= new_origin;
+            node.aabb.max -= new_origin;
         }
     }
 

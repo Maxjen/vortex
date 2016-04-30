@@ -8,7 +8,7 @@ use inferno::rendering::{ColorVertex2d, DrawBatch};
 use cgmath::*;
 use vortex::collision::{Shape, PolygonShape};
 use vortex::common::{DebugDraw};
-use vortex::dynamics::{BodyType, BodyConfig, FixtureConfig, World};
+use vortex::dynamics::{BodyType, BodyConfig, FixtureConfig, World, WorldHandle};
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -84,6 +84,24 @@ impl<'a> DebugDraw for MyDebugDraw<'a> {
     }
 }
 
+fn create_box(world: WorldHandle, position: Vector2<f32>) {
+    let body_config = BodyConfig {
+        body_type: BodyType::Dynamic,
+        position: position,
+        .. BodyConfig::default()
+    };
+    let body = world.borrow_mut().create_body(&body_config);
+
+    let mut shape = PolygonShape::new();
+    shape.set_as_box(0.2, 0.2);
+    let fixture_config = FixtureConfig {
+        friction: 0.3,
+        density: 1.0,
+        .. FixtureConfig::default()
+    };
+    body.borrow_mut().create_fixture(Shape::Polygon(shape), &fixture_config);
+}
+
 fn main() {
     use glium::{DisplayBuild, Surface};
     let display = glium::glutin::WindowBuilder::new()
@@ -118,16 +136,19 @@ fn main() {
     body1.borrow_mut().create_fixture(Shape::Polygon(shape), &fixture1_config);
 
     let body2_config = BodyConfig {
-        position: Vector2::new(6.0, -3.0),
-        angle: 0.8,
+        position: Vector2::new(3.0, -6.0),
+        //angle: 0.8,
         .. BodyConfig::default()
     };
     let body2 = world.borrow_mut().create_body(&body2_config);
 
     let mut shape2 = PolygonShape::new();
-    shape2.set_as_box(0.5, 0.5);
+    shape2.set_as_box(3.0, 0.5);
     let fixture2_config = FixtureConfig::default();
     body2.borrow_mut().create_fixture(Shape::Polygon(shape2), &fixture2_config);
+
+    create_box(world.clone(), vec2(1.0, 0.0));
+    create_box(world.clone(), vec2(2.0, 0.0));
 
     world.borrow().broad_phase.print();
 
@@ -138,6 +159,9 @@ fn main() {
     let mut next_tick = time::precise_time_ns() - 1;
     let mut loops;
 
+    let mut mouse_x: i32 = 0;
+    let mut mouse_y: i32 = 0;
+
     loop {
         loops = 0;
         while time::precise_time_ns() > next_tick && loops < max_frame_skip {
@@ -145,6 +169,14 @@ fn main() {
             for ev in display.poll_events() {
                 match ev {
                     Event::Closed => return,
+                    Event::MouseMoved(x, y) => {
+                        mouse_x = x;
+                        mouse_y = y;
+                    }
+                    Event::MouseInput(glium::glutin::ElementState::Pressed, glium::glutin::MouseButton::Left) => {
+                        let position = vec2(mouse_x as f32 / 100.0, -mouse_y as f32 / 100.0);
+                        create_box(world.clone(), position);
+                   }
                     _ => ()
                 }
             }

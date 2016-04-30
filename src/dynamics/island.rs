@@ -1,4 +1,4 @@
-use super::{BodyHandleWeak, BodyType, ContactHandleWeak, ContactSolver};
+use super::{BodyHandleWeak, BodyType, ContactHandleWeak, JointHandleWeak, ContactSolver};
 use super::world::{Profile, TimeStep};
 use ::common;
 use ::common::Timer;
@@ -139,16 +139,18 @@ pub struct Velocity {
 pub struct Island<'a> {
     pub bodies: Vec<BodyHandleWeak<'a>>,
     pub contacts: Vec<ContactHandleWeak<'a>>,
+    pub joints: Vec<JointHandleWeak<'a>>,
 
     positions: Vec<Position>,
     velocities: Vec<Velocity>,
 }
 
 impl<'a> Island<'a> {
-    pub fn new(body_capacity: usize, contact_capacity: usize) -> Island<'a> {
+    pub fn new(body_capacity: usize, contact_capacity: usize, joint_capacity: usize) -> Island<'a> {
         Island {
             bodies: Vec::with_capacity(body_capacity),
             contacts: Vec::with_capacity(contact_capacity),
+            joints: Vec::with_capacity(joint_capacity),
             positions: Vec::with_capacity(body_capacity),
             velocities: Vec::with_capacity(body_capacity),
         }
@@ -157,6 +159,10 @@ impl<'a> Island<'a> {
     pub fn clear(&mut self) {
         self.bodies.clear();
         self.contacts.clear();
+        self.joints.clear();
+
+        self.positions.clear();
+        self.velocities.clear();
     }
 
     pub fn add_body(&mut self, body: BodyHandleWeak<'a>) {
@@ -169,11 +175,15 @@ impl<'a> Island<'a> {
         self.contacts.push(contact);
     }
 
+    pub fn add_joint(&mut self, joint: JointHandleWeak<'a>) {
+        self.joints.push(joint);
+    }
+
     pub fn solve(&mut self, profile: &mut Profile, step: &TimeStep, gravity: &Vector2<f32>, allow_sleep: bool) {
         let dt = step.dt;
 
         // Integrate velocities and apply damping. Initialize the body state.
-        for b in &self.bodies {
+        for (i, b) in self.bodies.iter().enumerate() {
             let b = b.upgrade().unwrap();
 
             let c = b.borrow().sweep.c;
@@ -187,7 +197,7 @@ impl<'a> Island<'a> {
 
             if let BodyType::Dynamic = b.borrow().body_type {
                 // Integrate velocities.
-                v = v + (gravity * b.borrow().gravity_scale + b.borrow().force * b.borrow().inv_mass) * dt;
+                v += (gravity * b.borrow().gravity_scale + b.borrow().force * b.borrow().inv_mass) * dt;
                 w += dt * b.borrow().inv_inertia * b.borrow().torque;
 
                 // Apply damping.
@@ -197,7 +207,7 @@ impl<'a> Island<'a> {
                 // v2 = exp(-c * dt) * v1
                 // Pade approximation:
                 // v2 = v1 * 1 / (1 + c * dt)
-                v = v * 1.0 / (1.0 + dt * b.borrow().linear_damping);
+                v *= 1.0 / (1.0 + dt * b.borrow().linear_damping);
                 w *= 1.0 / (1.0 + dt * b.borrow().angular_damping);
             }
 
@@ -221,12 +231,21 @@ impl<'a> Island<'a> {
         if step.warm_starting {
             contact_solver.warm_start(&mut self.velocities);
         }
+        for j in &mut self.joints {
+            let j = j.upgrade().unwrap();
+            j.borrow_mut().initialize_velocity_constraints(*step, &self.positions, &mut self.velocities);
+        }
 
         profile.solve_init = timer.get_milliseconds();
 
         // Solve velocity constraints.
         timer.reset();
         for _ in 0..step.velocity_iterations {
+            for j in &mut self.joints {
+                let j = j.upgrade().unwrap();
+                j.borrow_mut().solve_velocity_constraints(*step, &mut self.velocities);
+            }
+
             contact_solver.solve_velocity_constraints(&mut self.velocities);
         }
 
@@ -245,7 +264,7 @@ impl<'a> Island<'a> {
             let translation = v * dt;
             if translation.magnitude2() > common::MAX_TRANSLATION_SQUARED {
                 let ratio = common::MAX_TRANSLATION / translation.magnitude();
-                v = v * ratio;
+                v *= ratio;
             }
 
             let rotation = w * dt;
@@ -255,7 +274,7 @@ impl<'a> Island<'a> {
             }
 
             // Integrate.
-            c = c + v * dt;
+            c += v * dt;
             a += w * dt;
 
             self.positions[i].c = c;
@@ -271,6 +290,11 @@ impl<'a> Island<'a> {
             let contacts_okay = contact_solver.solve_position_constraints(&mut self.positions);
 
             let mut joints_okay = true;
+            for j in &mut self.joints {
+                let j = j.upgrade().unwrap();
+                let joint_okay = j.borrow_mut().solve_position_constraints(*step, &mut self.positions);
+                joints_okay = joints_okay && joint_okay;
+            }
 
             if contacts_okay && joints_okay {
                 // Exit early if the position errors are small.
@@ -291,6 +315,10 @@ impl<'a> Island<'a> {
         }
 
         profile.solve_position = timer.get_milliseconds();
+
+        if allow_sleep {
+            // TODO
+        }
     }
 
     pub fn solve_toi(&mut self, sub_step: &TimeStep, toi_index_a: usize, toi_index_b: usize) {
@@ -367,7 +395,7 @@ impl<'a> Island<'a> {
             let translation = v * dt;
             if translation.magnitude2() > common::MAX_TRANSLATION_SQUARED {
                 let ratio = common::MAX_TRANSLATION / translation.magnitude();
-                v = v * ratio;
+                v *= ratio;
             }
 
             let rotation = w * dt;
@@ -377,7 +405,7 @@ impl<'a> Island<'a> {
             }
 
             // Integrate.
-            c = c + v * dt;
+            c += v * dt;
             a += w * dt;
 
             self.positions[i].c = c;

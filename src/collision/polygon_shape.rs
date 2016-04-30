@@ -29,7 +29,7 @@ impl PolygonShape {
         let p_ref = Vector2::<f32>::zero();
         // This code would put the reference point inside the polygon.
         // for v in &self.vertices {
-        //     p_ref = p_ref + v;
+        //     p_ref = p_ref + *v;
         // }
         // p_ref = p_ref * 1.0 / self.vertices.len() as f32;
 
@@ -50,9 +50,9 @@ impl PolygonShape {
             area += triangle_area;
 
             // Area weighted centroid.
-            self.centroid = self.centroid + (p_ref + p1 + p2) * triangle_area * inv3;
+            self.centroid += (p_ref + p1 + p2) * triangle_area * inv3;
         }
-        self.centroid = self.centroid * 1.0 / area;
+        self.centroid *= 1.0 / area;
     }
 
     /// Create a convex hull from the given vertices.
@@ -146,11 +146,6 @@ impl PolygonShape {
         }
 
         self.compute_centroid();
-
-        for (i, v) in self.vertices.iter().enumerate() {
-            println!("{} {:?}", i, v);
-        }
-        println!("");
     }
 
     /// Build vertices to represent an axis-aligned box centered on the local origin.
@@ -226,9 +221,9 @@ impl PolygonShape {
 
         // This code would put the reference point inside the polygon.
         for v in &self.vertices {
-            p_ref = p_ref + v;
+            p_ref += *v;
         }
-        p_ref = p_ref * 1.0 / self.vertices.len() as f32;
+        p_ref *= 1.0 / self.vertices.len() as f32;
 
         let inv3 = 1.0 / 3.0;
         for i in 0..self.vertices.len() {
@@ -249,8 +244,8 @@ impl PolygonShape {
             area += triangle_area;
 
             // Area weighted centroid.
-            center = center + (e1 + e2) * triangle_area * inv3;
-            //self.centroid = self.centroid + (p_ref + p1 + p2) * triangle_area * inv3;
+            center += (e1 + e2) * triangle_area * inv3;
+            //self.centroid += (p_ref + p1 + p2) * triangle_area * inv3;
 
             let ex1 = e1.x;
             let ey1 = e1.y;
@@ -269,14 +264,14 @@ impl PolygonShape {
 
         // Center of mass.
         assert!(area > f32::EPSILON);
-        center = center * 1.0 / area;
+        center *= 1.0 / area;
         let center_result = center + p_ref;
 
         // Inertia tensor relative to the local origin (p_ref).
         inertia = density * inertia;
 
         // Shift to center of mass then to original body origin.
-        inertia = inertia + mass * (dot(center_result, center_result) - dot(center, center));
+        inertia += mass * (dot(center_result, center_result) - dot(center, center));
 
         (mass, center_result, inertia)
     }

@@ -488,8 +488,8 @@ pub fn distance(cache: &mut SimplexCache, proxy_a: &DistanceProxy, proxy_b: &Dis
             distance -= r_a + r_b;
             let mut normal = point_b - point_a;
             normal = normal.normalize();
-            point_a = point_a + normal * r_a;
-            point_b = point_b - normal * r_b;
+            point_a += normal * r_a;
+            point_b -= normal * r_b;
         } else {
             // Shapes are overlapped when radii are considered.
             // Move the witness points to the middle.

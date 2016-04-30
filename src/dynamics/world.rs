@@ -5,7 +5,7 @@ use std::mem;
 use std::ptr;
 use std::f32;
 use cgmath::*;
-use super::{BodyType, BodyConfig, Body, BodyHandle, Fixture, FixtureHandle, ContactManager, Island};
+use super::{BodyType, BodyConfig, Body, BodyHandle, Fixture, FixtureHandle, JointConfig, Joint, JointHandle, ContactManager, Island};
 use ::collision;
 use ::collision::{BroadPhase, Shape, DistanceProxy, ToiState};
 use ::common;
@@ -60,6 +60,9 @@ pub struct World<'a> {
     bodies: HashMap<u32, BodyHandle<'a>>,
     body_index_pool: IndexPool,
 
+    joints: HashMap<u32, JointHandle<'a>>,
+    joint_index_pool: IndexPool,
+
     debug_draw: Option<Rc<RefCell<DebugDraw + 'a>>>,
     self_handle: WorldHandleWeak<'a>,
 
@@ -88,12 +91,14 @@ impl<'a> World<'a> {
                 allow_sleep: true,
                 bodies: HashMap::new(),
                 body_index_pool: IndexPool::new(),
+                joints: HashMap::new(),
+                joint_index_pool: IndexPool::new(),
                 debug_draw: None,
                 self_handle: mem::uninitialized(),
                 inv_dt0: 0.0,
                 warm_starting: true,
                 sub_stepping: false,
-                continuous_physics: true,
+                continuous_physics: false,
                 step_complete: true,
                 profile: Default::default(),
             }));
@@ -122,13 +127,24 @@ impl<'a> World<'a> {
         }
     }
 
-    pub fn create_joint(&mut self) {
+    pub fn create_joint(&mut self, joint_config: &JointConfig<'a>) -> JointHandle<'a> {
+        let index = self.joint_index_pool.get_index();
+        let world = self.self_handle.clone();
+        let result = Joint::new(joint_config);
+        self.joints.insert(index, result.clone());
 
+        let joint_weak = Rc::downgrade(&result);
+        let body_a = joint_config.body_a.upgrade().unwrap();
+        let body_b = joint_config.body_b.upgrade().unwrap();
+        body_a.borrow_mut().add_joint(joint_weak.clone());
+        body_b.borrow_mut().add_joint(joint_weak);
+
+        result
     }
 
-    pub fn delete_joint(&mut self) {
+    /*pub fn delete_joint(&mut self) {
 
-    }
+    }*/
 
     pub fn get_body(&self, id: u32) -> Option<BodyHandle<'a>> {
         if let Some(body) = self.bodies.get(&id) {
@@ -158,7 +174,7 @@ impl<'a> World<'a> {
                         }
                         debug_draw.borrow_mut().draw_polygon(&vertices);
 
-                        let aabb = self.broad_phase.get_fat_aabb(f.proxy_id.unwrap());
+                        /*let aabb = self.broad_phase.get_fat_aabb(f.proxy_id.unwrap());
                         let v1 = aabb.min;
                         let v2 = vec2(aabb.max.x, aabb.min.y);
                         let v3 = aabb.max;
@@ -166,7 +182,7 @@ impl<'a> World<'a> {
                         debug_draw.borrow_mut().draw_segment(&v1, &v2);
                         debug_draw.borrow_mut().draw_segment(&v2, &v3);
                         debug_draw.borrow_mut().draw_segment(&v3, &v4);
-                        debug_draw.borrow_mut().draw_segment(&v4, &v1);
+                        debug_draw.borrow_mut().draw_segment(&v4, &v1);*/
                     }
                 }
             }
@@ -180,7 +196,7 @@ impl<'a> World<'a> {
         self.profile.solve_position = 0.0;
 
         // Size the island for the worst case.
-        let mut island = Island::new(self.bodies.len(), self.contact_manager.get_contact_count());
+        let mut island = Island::new(self.bodies.len(), self.contact_manager.get_contact_count(), self.joints.len());
 
         // Clear all the island flags.
         for (_, b) in &self.bodies {
@@ -189,10 +205,9 @@ impl<'a> World<'a> {
         for c in &self.contact_manager.contacts {
             c.borrow_mut().is_island = false;
         }
-        /*for j in &self.joints {
+        for (_, j) in &self.joints {
             j.borrow_mut().set_island(false);
-        }*/
-        unimplemented!();
+        }
 
         // Build and simulate all awake islands.
         let mut stack: Vec<BodyHandle> = Vec::with_capacity(self.bodies.len());
@@ -270,7 +285,30 @@ impl<'a> World<'a> {
                 }
 
                 // Search all joints connected to this body.
-                unimplemented!()
+                for j in b.borrow().get_joints() {
+                    let joint = j.upgrade().unwrap();
+
+                    if joint.borrow().is_island() {
+                        continue;
+                    }
+
+                    let other = joint.borrow().get_other_body(Rc::downgrade(&b)).unwrap().upgrade().unwrap();
+
+                    // Don't simulate joints connected to inactive bodies.
+                    if !other.borrow().is_active() {
+                        continue;
+                    }
+
+                    island.add_joint(j.clone());
+                    joint.borrow_mut().set_island(true);
+
+                    if other.borrow().is_island() {
+                        continue;
+                    }
+
+                    other.borrow_mut().set_island(true);
+                    stack.push(other);
+                }
             }
 
             let mut profile = Profile::default();
@@ -316,7 +354,7 @@ impl<'a> World<'a> {
 
     // Find TOI contacts and solve them.
     pub fn solve_toi(&mut self, step: &TimeStep) {
-        let mut island = Island::new(2 * common::MAX_TOI_CONTACTS, common::MAX_TOI_CONTACTS);
+        let mut island = Island::new(2 * common::MAX_TOI_CONTACTS, common::MAX_TOI_CONTACTS, 0);
 
         if self.step_complete {
             for (_, b) in &self.bodies {
